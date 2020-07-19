@@ -1,0 +1,30 @@
+# primary or secondary camera properties
+cameras :
+
+    # primary camera
+    primary :
+        serialno   : 19141009
+        nickname   : primary-camera
+        resolution : !!python/tuple [720,540]
+
+    # secondary camera(s)
+    secondary :
+        serialno   :
+            - 19141017
+        nickname   :
+            - secondary-camera-1
+        resolution :
+            - !!python/tuple [720,540]
+
+# video acquisition properties for streaming or recording
+acquisition :
+
+    streaming :
+        framerate : 20
+        exposure  : 1500
+        binsize   : 4
+
+    recording :
+        framerate : 120
+        exposure  : 1500
+        binsize   : 2

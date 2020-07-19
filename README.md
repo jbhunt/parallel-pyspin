@@ -1,5 +1,5 @@
 # Description #
-This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit)) for programmatic control of FLIR cameras. It provides two major improvements.
+This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit) for programmatic control of FLIR cameras. It provides two major improvements.
 
 1.) Parallel operation of cameras via the multiprocessing package.
 

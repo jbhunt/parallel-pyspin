@@ -17,12 +17,13 @@ TODO : Describe how multiprocessing is used to parallelize the camera operation
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
 # Examples #
-This example demonstrates the `llpyspin.stream.VideoCapture` class which imitates [OpenCV's VideoCapture class](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html).
+## Creating a video stream ##
+This example demonstrates how to use the `llpyspin.stream.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality.
 
 ```python
->>> from llpyspin.stream import VideoCapture
+>>> from llpyspin.stream import VideoStream
 >>> device = 0 # device index
->>> cap = VideoCapture(device)
+>>> cap = VideoStream(device)
 >>> cap.isOpened()
 True
 >>> result,image = cap.read()

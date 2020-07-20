@@ -17,7 +17,7 @@ TODO : Describe how multiprocessing is used to parallelize the camera operation
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
 # Examples #
-This example demonstrates the `parallel_pyspin.stream.VideoCapture` class which mimics OpenCV's VideoCapture class.
+This example demonstrates the `parallel_pyspin.stream.VideoCapture` class which mimics [OpenCV's VideoCapture class](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html).
 
 ```python
 >>> from parallel_pyspin.stream import VideoCapture

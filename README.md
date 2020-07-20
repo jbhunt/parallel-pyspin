@@ -1,16 +1,23 @@
 # Description #
-This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit) for programmatic control of FLIR cameras. It provides two major improvements.
+This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
-1.) Parallel operation of cameras via the multiprocessing package.
+1.) Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
 
-2.) Built-in/automatic primary and secondary camera configuration for simultaneous video acquisition.
+2.) True synchronous video acquisition for multiple cameras
+
+For questions or general correspondance please send an email to hunt.brian.joshua@gmail.com.
 
 # Installation #
 TODO : Document the installation procedure.
 
-# Examples #
+# Parallel camera operation #
+TODO : Describe how multiprocessing is used to parallelize the camera operation
 
-Here is an example which demonstrates the functionality of the `parallel_pyspin.stream.VideoCapture` class  OpenCV's VideoCapture object.
+# Synchronous video acquisition #
+TODO : Describe how the cameras are configured for simultaneous video acquisition
+
+# Examples #
+This example demonstrates the `parallel_pyspin.stream.VideoCapture` class which mimics OpenCV's VideoCapture class.
 
 ```python
 >>> from parallel_pyspin.stream import VideoCapture

@@ -20,7 +20,7 @@ TODO : Describe how the cameras are configured for simultaneous video acquisitio
 This example demonstrates the `paralle_pyspin.stream.VideoCapture` class which mimics [OpenCV's VideoCapture class](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html).
 
 ```python
->>> from parallel_pyspin.stream import VideoCapture
+>>> from llpyspin.stream import VideoCapture
 >>> cap = VideoCapture(0) # 0 is device index
 >>> cap.isOpened()
 True

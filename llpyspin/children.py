@@ -49,22 +49,99 @@ class ChildProcess(Process):
     child process
     """
 
-    def __init__(self):
+    def __init__(self, id):
         """
         """
 
         super().__init__()
 
+        self.device    = device                 # this is either an index (int) or serial number (str)
         self.started   = Value('i',0)           # this flag controls the main loop in the run method
         self.acquiring = Value('i',0)           # this flag controls the acquisition loop in the _start method
-        self.queue     = Queue()                # IO queue object
+        self.iq        = Queue()                # input Queue
+        self.oq        = Queue()                # output Queue
 
         return
 
     def run(self):
         """
-        This method will be unique for each subclass
         """
+
+        # set the started flag to 1
+        self.started.value = 1
+
+        # create instances of the system and cameras
+        SYSTEM  = PySpin.System.GetInstance()
+        CAMERAS = SYSTEM.GetCameras()
+
+        try:
+            assert len(CAMERAS) >= 1
+        except AssertionError:
+            logging.warning('No cameras detected.')
+        finally:
+            CAMERAS.Clear()
+            SYSTEM.ReleaseInstance()
+            return
+
+        try:
+            if type(self.device) == str:
+                camera = CAMERAS.GetBySerial(self.device)
+            elif type(self.device) == int:
+                camera = CAMERAS.GetByIndex(self.device)
+            else:
+                raise ValueError(f'The device must be a string (serial number) or integer (index) but is {type(self.device)}.')
+
+        except:
+            logging.error('Camera instantiation failed.')
+
+        finally:
+            CAMERAS.Clear()
+            SYSTEM.ReleaseInstance()
+            return
+
+        # main loop
+        while self.started.value:
+
+            # listen for string commands
+            try:
+                command = self.iq.get(block=False)
+
+            except Empty:
+                continue
+
+            # set a valid acquisition property
+            if command == 'set':
+                result = self._set(camera)
+
+            # initialize the camera
+            elif command == 'initialize':
+                result = self._initialize(camera)
+
+            # setup the camera's trigger mechanism
+            elif command == 'configure':
+                result = self._configure(camera)
+
+            # start the acquisition
+            elif command == 'acquire':
+                result = self._acquire(camera)
+
+            # reset the camera's trigger mechanism
+            elif command == 'deconfigure':
+                result = self._deacquire(camera)
+
+            # de-init the camera
+            elif command == 'deinitialize':
+                result = self._deinitialize(camera)
+
+            # send the result
+            self.oq.put(result)
+
+            continue
+
+        # clean up
+        del camera
+        CAMERAS.Clear()
+        SYSTEM.ReleaseInstance()
 
         return
 
@@ -81,8 +158,9 @@ class ChildProcess(Process):
         # check that the mode argument is a valid stream buffer handling mode
         try:
             assert mode in ['NewestOnly','MostRecentFirst']
-        except:
-            mode = 'MostRecentFirst'
+        except AssertionError:
+            result = False
+            return result
 
         result = True
 
@@ -126,8 +204,8 @@ class ChildProcess(Process):
         result = True
 
         # get the property and its requested value
-        property = self.queue.get()
-        value    = self.queue.get()
+        property = self.iq.get()
+        value    = self.iq.get()
 
         # check that the property is valid
         try:
@@ -174,7 +252,60 @@ class ChildProcess(Process):
 
     def _acquire(self, camera):
         """
-        start acquisition
+        start video acquisition
+
+        notes
+        -----
+        This method will be unique for each subclass so it is defined only in name here
+        """
+
+        return True
+
+    def _deacquire(self, camera):
+        """
+        stop acquisition
+        """
+
+        result = True
+
+        try:
+            camera.EndAcquisition()
+
+        except:
+            result = False
+
+        return result
+
+    def _deinitialize(self, camera):
+        """
+        """
+
+        result = True
+
+        try:
+            camera.DeInit()
+
+        except:
+            result = False
+
+        return result
+
+class VideoStreamChildProcess(ChildProcess):
+    """
+    """
+
+    def __init__(self, device):
+        """
+        """
+
+        super().__init__(device)
+
+        self.image = Array('i',IMAGE_SIZE)
+
+        return
+
+    def _acquire(self):
+        """
         """
 
         result = True
@@ -212,52 +343,3 @@ class ChildProcess(Process):
             result = False
 
         return result
-
-    def _deacquire(self, camera):
-        """
-        stop acquisition
-        """
-
-        result = True
-
-        try:
-            camera.EndAcquisition()
-
-        except:
-            result = False
-
-        return result
-
-    def _deinitialize(self, camera):
-        """
-        """
-
-        result = True
-
-        try:
-            camera.DeInit()
-
-        except:
-            result = False
-
-        return result
-
-class VideoStreamChildProcess(ChildProcess):
-    """
-    """
-
-    def __init__(self):
-        """
-        """
-
-        super().__init__()
-
-        return
-
-    def run(self):
-        """
-        """
-
-        return
-
-    

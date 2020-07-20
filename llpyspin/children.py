@@ -49,7 +49,7 @@ class ChildProcess(Process):
     child process
     """
 
-    def __init__(self, id):
+    def __init__(self, device):
         """
         """
 
@@ -82,6 +82,8 @@ class ChildProcess(Process):
             CAMERAS.Clear()
             SYSTEM.ReleaseInstance()
             return
+
+            # TODO : join the process
 
         try:
             if type(self.device) == str:

@@ -9,6 +9,9 @@ from .constants import CAP_PROP_FPS, CAP_PROP_FPS_DEFAULT
 from .constants import CAP_PROP_BINSIZE, CAP_PROP_BINSIZE_DEFAULT
 from .constants import CAP_PROP_EXPOSURE, CAP_PROP_EXPOSURE_DEFAULT
 
+#
+from .children import VideoStreamChildProcess
+
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 

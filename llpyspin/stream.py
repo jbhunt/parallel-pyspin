@@ -21,16 +21,22 @@ from .constants import (
 
 # default acquisition property key and value pairs
 from .constants import (
-    CAP_PROP_FPS,      CAP_PROP_FPS_DEFAULT,
-    CAP_PROP_BINSIZE,  CAP_PROP_BINSIZE_DEFAULT,
-    CAP_PROP_EXPOSURE, CAP_PROP_EXPOSURE_DEFAULT,
-    CAP_PROP_WIDTH,    CAP_PROP_WIDTH_DEFAULT,
-    CAP_PROP_HEIGHT,   CAP_PROP_HEIGHT_DEFAULT
-    CAP_PROP_OFFSET,   CAP_PROP_OFFSET_DEFAULT
+    CAP_PROP_FPS,
+    CAP_PROP_FPS_DEFAULT,
+    CAP_PROP_BINSIZE,
+    CAP_PROP_BINSIZE_DEFAULT,
+    CAP_PROP_EXPOSURE,
+    CAP_PROP_EXPOSURE_DEFAULT,
+    CAP_PROP_WIDTH,
+    CAP_PROP_WIDTH_DEFAULT,
+    CAP_PROP_HEIGHT,
+    CAP_PROP_HEIGHT_DEFAULT,
+    CAP_PROP_OFFSET,
+    CAP_PROP_OFFSET_DEFAULT
     )
 
 # logging setup
-logging.basicConfig(format=format='%(levelname)s : %(message)s',level=logging.INFO)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # try to import the PySpin package
 try:
@@ -380,7 +386,7 @@ class VideoCapture():
 
         return
 
-    def set(property, value):
+    def set(self, property, value):
         """
         set the value of a valid acquisition property
         """
@@ -460,7 +466,7 @@ class VideoCapture():
             self._stop()
 
         # de-init the camera
-        self._child.iq.put('deinitialize')
+        self._child.queue.put('deinitialize')
         result = self._child.queue.get()
 
         if not result:

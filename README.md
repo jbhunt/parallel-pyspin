@@ -5,7 +5,7 @@ This package provides another layer of abstraction on top of [PySpin](https://ww
 
 2.) True synchronous video acquisition for multiple cameras
 
-For questions or general correspondance please send an email to hunt.brian.joshua@gmail.com.
+For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
 
 # Installation #
 TODO : Document the installation procedure.
@@ -17,7 +17,7 @@ TODO : Describe how multiprocessing is used to parallelize the camera operation
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
 # Examples #
-This example demonstrates the `parallel_pyspin.stream.VideoCapture` class which mimics [OpenCV's VideoCapture class](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html).
+This example demonstrates the `paralle_pyspin.stream.VideoCapture` class which mimics [OpenCV's VideoCapture class](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html).
 
 ```python
 >>> from parallel_pyspin.stream import VideoCapture

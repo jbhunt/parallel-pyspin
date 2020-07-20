@@ -33,3 +33,6 @@ True
 (540,720)
 >>> cap.release()
 ```
+
+# Acknowledgements #
+Big thanks to Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

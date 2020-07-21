@@ -41,7 +41,7 @@ You can modify a camera's framerate, exposure, or binsize using the VideoStream 
 >>> from llpyspin import constants
 >>> cap.get(constants.CAP_PROP_EXPOSURE)
 1500
->>> cap.set(constants.CAP_PROP_EXPOSURE,3000)
+>>> cap.set(constants.CAP_PROP_EXPOSURE,3000) # this restarts the child process - it will take a little bit of time
 >>> cap.get(constants.CAP_PROP_EXPOSURE)
 3000
 ```

@@ -34,5 +34,17 @@ True
 >>> cap.release()
 ```
 
+## Modifying acquisition properties ##
+You can modify a camera's framerate, exposure, or binsize using the VideoStream object's set method. In this example the exposure is changed from the default value (1500 us) to a new target value:
+
+``` python
+>>> from llpyspin import constants
+>>> cap.get(constants.CAP_PROP_EXPOSURE)
+1500
+>>> cap.set(constants.CAP_PROP_EXPOSURE,3000)
+>>> cap.get(constants.CAP_PROP_EXPOSURE)
+3000
+```
+
 # Acknowledgements #
 Big thanks to Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

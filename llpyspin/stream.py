@@ -162,16 +162,17 @@ class VideoStream():
 
         return (result,image)
 
-    def _stop(self):
+    def release(self):
         """
-        stop video acquisition
+        release the video stream
         """
 
-        # check that the camera is acquiring
         try:
-            assert self._child.acquiring.value == 1
+            assert self.isOpened() is True
+
         except AssertionError:
-            logging.info('Video acquisition is already stopped.')
+            logging.info('Video stream is already stopped.')
+            return
 
         # break out of the acquisition loop
         self._child.acquiring.value = 0
@@ -187,17 +188,6 @@ class VideoStream():
         result = self._child.oq.get()
         if not result:
             logging.warning('Video de-acquisition failed.')
-
-        return
-
-    def release(self):
-        """
-        release the video stream
-        """
-
-        # stop video acquisition if ongoing
-        if self._child.acquiring.value == 1:
-            self._stop()
 
         # de-init the camera
         self._child.iq.put('deinitialize')

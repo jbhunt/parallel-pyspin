@@ -279,6 +279,12 @@ class ChildProcess(Process):
         result = True
 
         try:
+
+            # TODO: Figure out why the camera is still streaming after the _deacquire method is called
+            # this is a temporary fix
+            if camera.IsStreaming():
+                camera.EndAcquisition()
+                
             camera.DeInit()
 
         except:
@@ -321,7 +327,7 @@ class VideoStreamChildProcess(ChildProcess):
 
         # main loop
         try:
-            while self.acquiring.value == 1:
+            while self.acquiring.value:
 
                 image = camera.GetNextImage()
 
@@ -335,8 +341,9 @@ class VideoStreamChildProcess(ChildProcess):
                     with self.image.get_lock():
                         self.image[:] = frame.GetNDArray().flatten()
 
+                image.Release()
+
         except:
             result = False
-            print('Acquisition failed.')
 
         return result

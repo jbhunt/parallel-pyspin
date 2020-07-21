@@ -71,6 +71,12 @@ class VideoStream():
             logging.info('Video stream is already open.')
             return
 
+        # check that the child process is alive
+        try:
+            assert self._child.is_alive()
+        except AssertionError:
+            self._startChild()
+
         # initialize the camera
         self._child.iq.put('initialize')
         result = self._child.oq.get()
@@ -101,7 +107,7 @@ class VideoStream():
 
         # check that the requested property is valid
         try:
-            assert hasattr(self,f'_{property}'')
+            assert hasattr(self,f'_{property}')
 
         except AssertionError:
             logging.warning(f'{property} is not a supported property.')
@@ -179,7 +185,6 @@ class VideoStream():
 
         # retreive the result (sent after exiting the acquisition loop)
         result = self._child.oq.get()
-
         if not result:
             logging.warning('Video acquisition failed.')
 
@@ -192,7 +197,6 @@ class VideoStream():
         # de-init the camera
         self._child.iq.put('deinitialize')
         result = self._child.oq.get()
-
         if not result:
             logging.warning('Camera de-initialization failed.')
 

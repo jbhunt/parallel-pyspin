@@ -1,5 +1,6 @@
 # imports
 import logging
+import numpy as np
 
 # image properties
 from .constants import IMAGE_SIZE, IMAGE_SHAPE, IMAGE_WIDTH, IMAGE_HEIGHT
@@ -33,30 +34,52 @@ class VideoStream():
         """
 
         # init and start the process
-        self._child = VideoStreamChildProcess(device)
+        self.device = device
+
+        # start the child process
+        self._startChild()
+
+        # set the default capture properties
+        self._framerate = CAP_PROP_FPS_DEFAULT
+        self._binsize   = CAP_PROP_BINSIZE_DEFAULT
+        self._exposure  = CAP_PROP_EXPOSURE_DEFAULT
+
+        # start acquisition
+        self.open()
+
+        return
+
+    def _startChild(self):
+        """
+        start the child process
+        """
+
+        self._child = VideoStreamChildProcess(self.device)
         self._child.start()
+
+        return
+
+    def open(self):
+        """
+        open the stream
+        """
+
+        # assert that the stream is closed
+        try:
+            assert self.isOpened() is False
+        except AssertionError:
+            logging.info('Video stream is already open.')
+            return
 
         # initialize the camera
         self._child.iq.put('initialize')
         result = self._child.oq.get()
-
-        # read out the result
         if not result:
             logging.error('Camera initialization failed.')
             return
 
-        # set the default acquisition property values
-        properties = [
-            CAP_PROP_FPS,
-            CAP_PROP_BINSIZE,
-            CAP_PROP_EXPOSURE
-            ]
-
-        values = [
-            CAP_PROP_FPS_DEFAULT,
-            CAP_PROP_BINSIZE_DEFAULT,
-            CAP_PROP_EXPOSURE_DEFAULT
-            ]
+        values = [self._framerate,self._binsize,self._exposure]
+        properties = [CAP_PROP_FPS,CAP_PROP_BINSIZE,CAP_PROP_EXPOSURE]
 
         for (property,value) in zip(properties,values):
             self._child.iq.put('set')
@@ -67,47 +90,7 @@ class VideoStream():
             if not result:
                 logging.warning(f'Failed to set {property} to {value}.')
 
-        # start acquisition
-        self._start()
-
-        return
-
-    def _start(self):
-        """
-        start video acquisition
-        """
-
-        # check that the camera isn't acquiring
-        try:
-            assert self._child.acquiring.value == 0
-        except AssertionError:
-            logging.info('Video acquisition is already started.')
-            return
-
         self._child.iq.put('acquire')
-
-        return
-
-    def _stop(self):
-        """
-        stop video acquisition
-        """
-
-        # check that the camera is acquiring
-        try:
-            assert self._child.acquiring.value == 1
-        except AssertionError:
-            logging.info('Video acquisition is already stopped.')
-            return
-
-        # break out of the acquisition loop
-        self._child.acquiring.value = 0
-
-        # retreive the result (sent after exiting the acquisition loop)
-        result = self._child.oq.get()
-
-        if not result:
-            logging.warning('Video acquisition failed.')
 
         return
 
@@ -118,37 +101,35 @@ class VideoStream():
 
         # check that the requested property is valid
         try:
-            assert property in [CAP_PROP_FPS,CAP_PROP_BINSIZE,CAP_PROP_EXPOSURE]
+            assert hasattr(self,f'_{property}'')
 
         except AssertionError:
             logging.warning(f'{property} is not a supported property.')
             return
 
-        # stop the acquisition if started
+        # set the new property value
+        self.__setattr__(f'_{property}',value)
 
-        # restart acquisition or not
-        restart = False
+        # release the stream if open
+        if self.isOpened():
+            self.release()
 
-        # if acquisition is ongoing ...
-        if self._child.acquiring.value:
-            self._stop()
-            restart = True
-
-        # communicate with the child process
-        self._child.iq.put('set')
-        self._child.iq.put(property)
-        self._child.iq.put(value)
-
-        result = self._child.oq.get()
-
-        if not result:
-            logging.warning(f'Failed to set {property} to {value}.')
-
-        # restart the acquisition if started
-        if restart:
-            self._start()
+        # (re-)open the stream
+        self.open()
 
         return
+
+    def get(self, property):
+        """
+        return the value of a valid capture property
+        """
+
+        try:
+            assert hasattr(self,f'_{property}')
+        except AssertionError:
+            logging.warning(f'{property} is not a valid property')
+
+        return self.__getattribute__(f'_{property}')
 
     def isOpened(self):
         """
@@ -180,6 +161,34 @@ class VideoStream():
             result = False
 
         return (result,image)
+
+    def _stop(self):
+        """
+        stop video acquisition
+        """
+
+        # check that the camera is acquiring
+        try:
+            assert self._child.acquiring.value == 1
+        except AssertionError:
+            logging.info('Video acquisition is already stopped.')
+
+        # break out of the acquisition loop
+        self._child.acquiring.value = 0
+
+        # retreive the result (sent after exiting the acquisition loop)
+        result = self._child.oq.get()
+
+        if not result:
+            logging.warning('Video acquisition failed.')
+
+        # stop acquisition
+        self._child.iq.put('deacquire')
+        result = self._child.oq.get()
+        if not result:
+            logging.warning('Video de-acquisition failed.')
+
+        return
 
     def release(self):
         """

@@ -78,12 +78,7 @@ class ChildProcess(Process):
             assert len(CAMERAS) >= 1
         except AssertionError:
             logging.warning('No cameras detected.')
-        finally:
-            CAMERAS.Clear()
-            SYSTEM.ReleaseInstance()
-            return
-
-            # TODO : join the process
+            self.started.value = 0
 
         try:
             if type(self.device) == str:
@@ -91,15 +86,11 @@ class ChildProcess(Process):
             elif type(self.device) == int:
                 camera = CAMERAS.GetByIndex(self.device)
             else:
-                raise ValueError(f'The device must be a string (serial number) or integer (index) but is {type(self.device)}.')
+                raise TypeError(f'The device must be a string (serial number) or integer (index) but is {type(self.device)}.')
 
         except:
             logging.error('Camera instantiation failed.')
-
-        finally:
-            CAMERAS.Clear()
-            SYSTEM.ReleaseInstance()
-            return
+            self.started.value = 0
 
         # main loop
         while self.started.value:
@@ -141,7 +132,10 @@ class ChildProcess(Process):
             continue
 
         # clean up
-        del camera
+        try:
+            del camera
+        except NameError:
+            pass
         CAMERAS.Clear()
         SYSTEM.ReleaseInstance()
 
@@ -306,7 +300,7 @@ class VideoStreamChildProcess(ChildProcess):
 
         return
 
-    def _acquire(self):
+    def _acquire(self, camera):
         """
         """
 
@@ -343,5 +337,6 @@ class VideoStreamChildProcess(ChildProcess):
 
         except:
             result = False
+            print('Acquisition failed.')
 
         return result

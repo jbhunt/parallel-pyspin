@@ -31,16 +31,6 @@ class BaseCamera():
 
         return
 
-    def _createChild(self):
-        """
-        create and start the child process
-        """
-
-        self._child = p.PrimaryCameraProcess(self.serialno)
-        self._child.start()
-
-        return
-
     def isPrimed(self):
         """
         returns the state of acquisition
@@ -174,6 +164,16 @@ class PrimaryCamera(BaseCamera):
 
         return
 
+    def _createChild(self):
+        """
+        create and start the child process
+        """
+
+        self._child = p.PrimaryCameraProcess(self.serialno)
+        self._child.start()
+
+        return
+
     def prime(self):
         """
         prime the camera for video acquisition
@@ -282,6 +282,16 @@ class SecondaryCamera(BaseCamera):
         self.nickname = c.SECONDARY_NICKNAMES[icamera] if nickname is None else nickname
 
         self.prime()
+
+        return
+
+    def _createChild(self):
+        """
+        create and start the child process
+        """
+
+        self._child = p.SecondaryCameraProcess(self.serialno)
+        self._child.start()
 
         return
 

@@ -52,7 +52,7 @@ TODO : Add a description here.
 
 ### Basic primary camera use ###
 ```Python
->>> from llpyspin.primary import PrimaryCamera
+>>> from llpyspin.cameras import PrimaryCamera
 >>> device = str(12345678) # primary camera serial number
 >>> cam = PrimaryCamera(device)
 >>> cam.isPrimed() # check that the camera is primed
@@ -70,7 +70,7 @@ True
 ```
 
 ### Modifying camera properties ###
-Unlike the `llpyspin.stream.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.primary.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
+Unlike the `llpyspin.stream.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.cameras.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
 
 ```Python
 >>> cam.framerate

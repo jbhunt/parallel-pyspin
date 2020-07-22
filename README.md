@@ -50,7 +50,7 @@ You can modify a camera's framerate, exposure, or binsize using the VideoStream 
 ## Recording ##
 TODO : Add a description here.
 
-### Setting up a primary camera ###
+### Basic primary camera use ###
 ```Python
 >>> from llpyspin.primary import PrimaryCamera
 >>> device = str(12345678) # primary camera serial number
@@ -67,6 +67,24 @@ False
 >>> cam.prime() # you can re-prime the camera for subsequent recordings
 >>> cam.isPrimed()
 True
+```
+
+### Modifying camera properties ###
+Unlike the `llpyspin.stream.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.primary.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
+
+```Python
+>>> cam.framerate
+120
+>>> cam.framerate = 60 # this calls the private class method _set
+>>> cam.framerate
+60
+>>> for attr in ['framerate','exposure','binsize','mode','foo']:
+        print(hasattr(cam,attr))
+True
+True
+True
+True
+False
 ```
 
 ### Setting up a secondary camera ###

@@ -50,7 +50,7 @@ You can modify a camera's framerate, exposure, or binsize using the VideoStream 
 # Recording #
 TODO : Add a description here.
 
-# Setting up a primary camera #
+## Setting up a primary camera ##
 ```python
 >>> from llpyspin.primary import PrimaryCamera
 >>> cam = PrimaryCamera()
@@ -68,7 +68,7 @@ False
 True
 ```
 
-# Setting up a secondary camera #
+## Setting up a secondary camera ##
 
 # Acknowledgements #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

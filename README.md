@@ -17,7 +17,8 @@ TODO : Describe how multiprocessing is used to parallelize the camera operation
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
 # Examples #
-## Creating a video stream ##
+## Streaming ##
+### Creating a video stream ###
 This example demonstrates how to use the `llpyspin.stream.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality.
 
 ```python
@@ -34,17 +35,40 @@ True
 >>> cap.release()
 ```
 
-## Modifying acquisition properties ##
+### Modifying video stream properties ###
 You can modify a camera's framerate, exposure, or binsize using the VideoStream object's set method. In this example the exposure is changed from the default value (1500 us) to a new target value:
 
 ``` python
->>> from llpyspin import constants
->>> cap.get(constants.CAP_PROP_EXPOSURE)
+>>> from llpyspin import constants as c
+>>> cap.get(c.CAP_PROP_EXPOSURE)
 1500
->>> cap.set(constants.CAP_PROP_EXPOSURE,3000) # this restarts the child process - it will take a little bit of time
->>> cap.get(constants.CAP_PROP_EXPOSURE)
+>>> cap.set(c.CAP_PROP_EXPOSURE,3000) # this restarts the child process
+>>> cap.get(c.CAP_PROP_EXPOSURE)
 3000
 ```
 
+# Recording #
+TODO : Add a description here.
+
+# Setting up a primary camera #
+```python
+>>> from llpyspin.primary import PrimaryCamera
+>>> cam = PrimaryCamera()
+>>> cam.isPrimed() # check that the camera is primed
+True
+>>> cam.prime()
+INFO : Video acquisition is already started
+>>> cam.trigger() # trigger camera
+>>> cam.stop() # stop acquisition
+>>> cam.release() # release camera
+>>> cam.isPrimed()
+False
+>>> cam.prime() # you can re-prime the camera for subsequent recordings
+>>> cam.isPrimed()
+True
+```
+
+# Setting up a secondary camera #
+
 # Acknowledgements #
-Big thanks to Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
+Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

@@ -43,7 +43,7 @@ class PrimaryCamera():
 
         return
 
-    def isAcquiring(self):
+    def isPrimed(self):
         """
         returns the state of acquisition
         """

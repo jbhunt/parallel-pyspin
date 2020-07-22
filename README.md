@@ -51,7 +51,7 @@ You can modify a camera's framerate, exposure, or binsize using the VideoStream 
 TODO : Add a description here.
 
 ### Setting up a primary camera ###
-```python
+```
 >>> from llpyspin.primary import PrimaryCamera
 >>> cam = PrimaryCamera()
 >>> cam.isPrimed() # check that the camera is primed

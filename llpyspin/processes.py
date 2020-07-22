@@ -436,16 +436,63 @@ class SecondaryCameraProcess(BaseProcess):
         """
         """
 
-        return
+        result = True
+
+        try:
+            camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
+            camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
+            camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
+            camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+
+        except:
+            result = False
+
+        return result
 
     def _deconfigure(self, camera):
         """
         """
 
-        return
+        result = True
 
-    def _acquire(self):
+        try:
+            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+
+        except:
+            result = False
+
+        return result
+
+    def _acquire(self, camera):
         """
         """
 
-        return
+        result = True
+
+        try:
+            camera.BeginAcquisition()
+
+            # double-check that the acquisition flag is set to 1
+            try:
+                assert self.acquiring.value == 1
+            except AssertionError:
+                self.acquiring.value = 1
+
+            # main loop
+            while self.acquiring.value == 1:
+
+                # this blocks until the hardware trigger is detected
+                # i.e., the secondary cameras need to be started before the primary camera
+                image = camera.GetNextImage()
+
+                #
+                if not image.IsIncomplete():
+
+                    # convert the image
+                    frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+
+
+        except:
+            result = False
+
+        return result

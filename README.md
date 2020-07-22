@@ -76,6 +76,9 @@ Unlike the `llpyspin.stream.VideoStream` class which uses a class method to chan
 >>> cam.framerate
 120
 >>> cam.framerate = 60 # this calls the private class method _set
+WARNING : Failed to set framerate to 60 because acquisition is ongoing. # properties can't be set after the camera is primed
+>>> cam.stop()
+>>> cam.framerate = 60
 >>> cam.framerate
 60
 >>> for attr in ['framerate','exposure','binsize','mode','foo']:

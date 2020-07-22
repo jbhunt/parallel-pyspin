@@ -2,16 +2,9 @@
 import logging
 import numpy as np
 
-# image properties
-from .constants import IMAGE_SIZE, IMAGE_SHAPE, IMAGE_WIDTH, IMAGE_HEIGHT
-
-# default acquisition property key and value pairs
-from .constants import CAP_PROP_FPS, CAP_PROP_FPS_DEFAULT
-from .constants import CAP_PROP_BINSIZE, CAP_PROP_BINSIZE_DEFAULT
-from .constants import CAP_PROP_EXPOSURE, CAP_PROP_EXPOSURE_DEFAULT
-
-#
-from .children import VideoStreamChildProcess
+# relative imports
+import .constants as c
+import .processes as p
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -40,9 +33,10 @@ class VideoStream():
         self._startChild()
 
         # set the default capture properties
-        self._framerate = CAP_PROP_FPS_DEFAULT
-        self._binsize   = CAP_PROP_BINSIZE_DEFAULT
-        self._exposure  = CAP_PROP_EXPOSURE_DEFAULT
+        self._framerate = c.CAP_PROP_FPS_DEFAULT
+        self._binsize   = c.CAP_PROP_BINSIZE_DEFAULT
+        self._exposure  = c.CAP_PROP_EXPOSURE_DEFAULT
+        self._mode      = c.CAP_PROP_BUFFER_HANDLING_MODE_STREAMING
 
         # start acquisition
         self.open()
@@ -54,7 +48,7 @@ class VideoStream():
         start the child process
         """
 
-        self._child = VideoStreamChildProcess(self.device)
+        self._child = p.VideoStreamProcess(self.device)
         self._child.start()
 
         return
@@ -84,8 +78,19 @@ class VideoStream():
             logging.error('Camera initialization failed.')
             return
 
-        values = [self._framerate,self._binsize,self._exposure]
-        properties = [CAP_PROP_FPS,CAP_PROP_BINSIZE,CAP_PROP_EXPOSURE]
+        properties = [
+            c.CAP_PROP_FPS,
+            c.CAP_PROP_BINSIZE,
+            c.CAP_PROP_EXPOSURE,
+            c.CAP_PROP_BUFFER_HANDLING_MODE
+            ]
+
+        values = [
+            self._framerate,
+            self._binsize,
+            self._exposure,
+            self._mode
+            ]
 
         for (property,value) in zip(properties,values):
             self._child.iq.put('set')
@@ -110,7 +115,7 @@ class VideoStream():
             assert hasattr(self,f'_{property}')
 
         except AssertionError:
-            logging.warning(f'{property} is not a supported property.')
+            logging.warning(f'{property} is not a valid property.')
             return
 
         # set the new property value

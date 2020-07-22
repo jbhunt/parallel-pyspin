@@ -6,8 +6,6 @@ import numpy as np
 import .constants as c
 import .processes as p
 
-# from .children import PrimaryCameraChildProcess
-
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
@@ -15,12 +13,15 @@ class PrimaryCamera():
     """
     """
 
-    def __init__(self, serialno=None):
+    def __init__(self, serialno=None, nickname=None):
         """
         """
 
         # serial number
         self.serialno = c.PRIMARY_SERIALNO if serialno is None else serialno
+
+        # nickname
+        self.nickname = c.PRIMARY_NICKNAME if nickname is None else nickname
 
         # set the default values
         self._framerate = c.CAP_PROP_FPS_DEFAULT
@@ -63,7 +64,7 @@ class PrimaryCamera():
             return
 
         # (re-)start the child process if needed
-        if not hasattr('_child') or not self._child.is_alive():
+        if not hasattr('_child') or not self._child.is_alive(): # the order of these conditions is important
             self._createChild()
 
         # initialize the camera
@@ -75,8 +76,8 @@ class PrimaryCamera():
 
         # set the acquisition properties
         for (property,value) in vars(self).items():
-            if property.strip('_') in c.VALID_CAP_PROPS:
-                self._set(property,value)
+            if property.strip('_') in c.SUPPORTED_CAP_PROPS:
+                result = self._set(property,value)
 
         # configure the camera
         self._child.iq.put('configure')
@@ -118,6 +119,12 @@ class PrimaryCamera():
 
         # break out of the acquisition loop
         self._child.acquiring.value = 0
+
+        # check if camera is waiting for trigger
+        try:
+            assert self._child.triggered.value == 0
+        except AssertionError:
+            self.trigger() # release the trigger
 
         # retreive the result (sent after exiting the acquisition loop)
         result = self._child.oq.get()
@@ -232,3 +239,13 @@ class PrimaryCamera():
         result = self._set(c.CAP_PROP_BINSIZE,value)
         if result:
             self._binsize = value
+
+    # buffer stream handling mode
+    @property
+    def mode(self):
+        return self._mode
+    @mode.setter
+    def mode(self, value):
+        result = self._set(c.CAP_PROP_BUFFER_HANDLING_MODE,value)
+        if result:
+            self._mode = value

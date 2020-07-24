@@ -17,7 +17,7 @@ This package was developed using two [Blackfly S USB3](https://www.flir.com/prod
       2. [Modifying video stream properties](https://github.com/jbhunt/parallel-pyspin/#modifying-video-stream-properties)
    2. [Cameras](https://github.com/jbhunt/parallel-pyspin/#cameras)
       1. [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#creating-an-instance-of-a-primary-camera)
-      2. 4.2.2 [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
+      2. [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
    3. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
    4. [System](https://github.com/jbhunt/parallel-pyspin/#systems)
 5. [Acknowledgements](https://github.com/jbhunt/parallel-pyspin/#acknowlegements)

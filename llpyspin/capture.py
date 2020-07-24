@@ -1,13 +1,216 @@
 # imports
 import logging
 import numpy as np
+from queue import Empty
 
 # relative imports
-import .constants as c
-import .processes as p
+import llpyspin.constants as c
+import llpyspin.processes as p
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+
+class VideoStream():
+    """
+    OpenCV-like video stream for a single BlackflyS camera
+
+    notes
+    -----
+    This object operates like OpenCV's VideoCapture class
+    """
+
+    def __init__(self, device=0):
+        """
+        keywords
+        --------
+        device : int
+            device index which specifies the camera
+        """
+
+        # init and start the process
+        self.device = device
+
+        # start the child process
+        self._startChild()
+
+        # set the default capture properties
+        self._framerate = c.CAP_PROP_FPS_DEFAULT
+        self._binsize   = c.CAP_PROP_BINSIZE_DEFAULT
+        self._exposure  = c.CAP_PROP_EXPOSURE_DEFAULT
+        self._mode      = c.CAP_PROP_BUFFER_HANDLING_MODE_STREAMING
+
+        # start acquisition
+        self.open()
+
+        return
+
+    def _startChild(self):
+        """
+        start the child process
+        """
+
+        self._child = p.VideoStreamProcess(self.device)
+        self._child.start()
+
+        return
+
+    def open(self):
+        """
+        open the stream
+        """
+
+        # assert that the stream is closed
+        try:
+            assert self.isOpened() is False
+        except AssertionError:
+            logging.info('Video stream is already open.')
+            return
+
+        # check that the child process is alive
+        try:
+            assert self._child.is_alive()
+        except AssertionError:
+            self._startChild()
+
+        # initialize the camera
+        self._child.iq.put('initialize')
+        result = self._child.oq.get()
+        if not result:
+            logging.error('Camera initialization failed.')
+            return
+
+        properties = [
+            c.CAP_PROP_FPS,
+            c.CAP_PROP_BINSIZE,
+            c.CAP_PROP_EXPOSURE,
+            c.CAP_PROP_BUFFER_HANDLING_MODE
+            ]
+
+        values = [
+            self._framerate,
+            self._binsize,
+            self._exposure,
+            self._mode
+            ]
+
+        for (property,value) in zip(properties,values):
+            self._child.iq.put('set')
+            self._child.iq.put(property)
+            self._child.iq.put(value)
+            result = self._child.oq.get()
+
+            if not result:
+                logging.warning(f'Failed to set {property} to {value}.')
+
+        self._child.iq.put('acquire')
+
+        return
+
+    def set(self, property, value):
+        """
+        set the value of a valid acquisition property
+        """
+
+        # check that the requested property is valid
+        try:
+            assert hasattr(self,f'_{property}')
+
+        except AssertionError:
+            logging.warning(f'{property} is not a valid property.')
+            return
+
+        # set the new property value
+        self.__setattr__(f'_{property}',value)
+
+        # release the stream if open
+        if self.isOpened():
+            self.release()
+
+        # (re-)open the stream
+        self.open()
+
+        return
+
+    def get(self, property):
+        """
+        return the value of a valid capture property
+        """
+
+        try:
+            assert hasattr(self,f'_{property}')
+        except AssertionError:
+            logging.warning(f'{property} is not a valid property')
+
+        return self.__getattribute__(f'_{property}')
+
+    def isOpened(self):
+        """
+        returns
+        -------
+        result : bool
+            True if streaming else False
+        """
+
+        result = True if self._child.acquiring.value == 1 else False
+
+        return result
+
+    def read(self):
+        """
+        grab the most recently acquired image
+        """
+
+        result = True
+
+        try:
+
+            # the lock blocks if a new image is being acquired / stored in the image attribute
+            with self._child.image.get_lock():
+                image = np.array(self._child.image[:],dtype=np.uint8).reshape(IMAGE_SHAPE)
+
+        except:
+            image = None
+            result = False
+
+        return (result,image)
+
+    def release(self):
+        """
+        release the video stream
+        """
+
+        try:
+            assert self.isOpened() is True
+
+        except AssertionError:
+            logging.info('Video stream is already stopped.')
+            return
+
+        # break out of the acquisition loop
+        self._child.acquiring.value = 0
+
+        # retreive the result (sent after exiting the acquisition loop)
+        result = self._child.oq.get()
+        if not result:
+            logging.warning('Video acquisition failed.')
+
+        # stop acquisition
+        self._child.iq.put('deacquire')
+        result = self._child.oq.get()
+        if not result:
+            logging.warning('Video de-acquisition failed.')
+
+        # de-init the camera
+        self._child.iq.put('deinitialize')
+        result = self._child.oq.get()
+        if not result:
+            logging.warning('Camera de-initialization failed.')
+
+        # break out of the main loop
+        self._child.started.value = 0
+        self._child.join()
+
+        return
 
 class BaseCamera():
     """
@@ -25,7 +228,7 @@ class BaseCamera():
 
         # set the default values
         self._framerate = c.CAP_PROP_FPS_DEFAULT
-        self._binsize   = c.CAP_PROP_BINSIZE_DEFAULT,
+        self._binsize   = c.CAP_PROP_BINSIZE_DEFAULT
         self._exposure  = c.CAP_PROP_EXPOSURE_DEFAULT
         self._mode      = c.CAP_PROP_BUFFER_HANDLING_MODE_RECORDING
 
@@ -36,14 +239,14 @@ class BaseCamera():
         returns the state of acquisition
         """
 
-        return True if self._child.acquiring.value == 1 else False
+        return True if hasattr(self,'_child') and self._child.acquiring.value == 1 else False
 
     def release(self):
         """
         """
 
         # stop acquisition if acquiring
-        if self.isAcquiring() is True:
+        if self.isPrimed() is True:
             logging.info('Stopping video acquisition.')
             self.stop()
 
@@ -79,14 +282,14 @@ class BaseCamera():
 
         # assert that acquisition is not ongoing
         try:
-            assert self.isAcquiring() is False
-        except:
+            assert self.isPrimed() is False
+        except AssertionError:
             logging.warning(f'Failed to set {property} to {value} because video acquisition is ongoing.')
             return result
 
         # check that the requested property is valid
         try:
-            assert property in [c.CAP_PROP_FPS, c.CAP_PROP_BINSIZE, c.CAP_PROP_EXPOSURE]
+            assert property in c.SUPPORTED_CAP_PROPS
 
         except AssertionError:
             logging.warning(f'Failed to set {property} to {value} because {property} is not a valid property.')
@@ -98,6 +301,8 @@ class BaseCamera():
         self._child.iq.put('set')
         self._child.iq.put(property)
         self._child.iq.put(value)
+
+        logging.info(f'Setting {property} to {value}.')
 
         result = self._child.oq.get()
 
@@ -181,13 +386,13 @@ class PrimaryCamera(BaseCamera):
 
         # check that the camera isn't acquiring
         try:
-            assert self.isAcquiring() is False
+            assert self.isPrimed() is False
         except AssertionError:
             logging.info('Video acquisition is already started.')
             return
 
         # (re-)start the child process if needed
-        if not hasattr('_child') or not self._child.is_alive(): # the order of these conditions is important
+        if not hasattr(self,'_child') or not self._child.is_alive(): # the order of these conditions is important
             self._createChild()
 
         # initialize the camera
@@ -199,7 +404,8 @@ class PrimaryCamera(BaseCamera):
 
         # set the acquisition properties
         for (property,value) in vars(self).items():
-            if property.strip('_') in c.SUPPORTED_CAP_PROPS:
+            property = property.strip('_')
+            if property in c.SUPPORTED_CAP_PROPS:
                 result = self._set(property,value)
 
         # configure the camera
@@ -219,7 +425,7 @@ class PrimaryCamera(BaseCamera):
         """
 
         # start acquisition if necessary
-        if self._child.acquiring.value == 0:
+        if not self.isPrimed():
             logging.warning('Video acquisition is not started. Call the prime method.')
             return
 
@@ -235,7 +441,7 @@ class PrimaryCamera(BaseCamera):
 
         # check that the camera is acquiring
         try:
-            assert self.isAcquiring() is True
+            assert self.isPrimed() is True
         except AssertionError:
             logging.info('Video acquisition is already stopped.')
             return
@@ -243,11 +449,12 @@ class PrimaryCamera(BaseCamera):
         # break out of the acquisition loop
         self._child.acquiring.value = 0
 
+        # TODO : implement a time out (see stop method of SecondaryCamera)
         # check if camera is waiting for trigger
         try:
             assert self._child.triggered.value == 0
         except AssertionError:
-            self.trigger() # release the trigger
+            self._child.triggered.value = 0 # release the trigger
 
         # retreive the result (sent after exiting the acquisition loop)
         result = self._child.oq.get()
@@ -302,13 +509,13 @@ class SecondaryCamera(BaseCamera):
 
         # check that the camera isn't acquiring
         try:
-            assert self.isAcquiring() is False
+            assert self.isPrimed() is False
         except AssertionError:
             logging.info('Video acquisition is already started.')
             return
 
         # (re-)start the child process if needed
-        if not hasattr('_child') or not self._child.is_alive(): # the order of these conditions is important
+        if not hasattr(self,'_child') or not self._child.is_alive(): # the order of these conditions is important
             self._createChild()
 
         # initialize the camera
@@ -320,7 +527,8 @@ class SecondaryCamera(BaseCamera):
 
         # set the acquisition properties
         for (property,value) in vars(self).items():
-            if property.strip('_') in c.SUPPORTED_CAP_PROPS:
+            property = property.strip('_')
+            if property in c.SUPPORTED_CAP_PROPS:
                 result = self._set(property,value)
 
         # configure the camera
@@ -341,7 +549,7 @@ class SecondaryCamera(BaseCamera):
 
         # check that the camera is acquiring
         try:
-            assert self.isAcquiring() is True
+            assert self.isPrimed() is True
         except AssertionError:
             logging.info('Video acquisition is already stopped.')
             return
@@ -355,11 +563,14 @@ class SecondaryCamera(BaseCamera):
         # get call. In the case of a timeout, the child process is terminated.
 
         try:
-            result = self._child.oq.get(block=True,timeout=30)
+            result = self._child.oq.get(block=True,timeout=5)
             if not result:
                 logging.warning('Video acquisition failed.')
 
         except Empty:
+
+            # TODO : Instead of terminating the child process,
+            # send all the commands to clean up then join the process
 
             # log this event
             logging.warning('The hardware trigger was never detected.')

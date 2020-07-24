@@ -33,7 +33,12 @@ TODO : Describe how multiprocessing is used to parallelize the camera operation
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
 # 2. Installation #
-TODO : Document the installation procedure.
+You can install this pre-release version of this package via pip:
+1. `pip install parallel-pyspin`
+
+You can also clone this repository and run the setup script:
+1. `git clone www.github.com/jbhunt/parallel-pyspin`
+2. `python -m setup.py install`
 
 # 3. Usage #
 ## 3.1. Streaming ##

@@ -5,7 +5,23 @@ This package provides another layer of abstraction on top of [PySpin](https://ww
 
 2.) True synchronous video acquisition for multiple cameras
 
-For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
+This package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
+
+# Table of contents #
+- [Installation](https://github.com/jbhunt/parallel-pyspin/#installation)
+- [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#parallel-camera-operation)
+- [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#synchronous-video-acquisition)
+- [Examples](https://github.com/jbhunt/parallel-pyspin/#examples)
+  * [Streaming](https://github.com/jbhunt/parallel-pyspin/#streaming)
+    - [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#creating-a-video-stream)
+    - [Modifying video stream properties](https://github.com/jbhunt/parallel-pyspin/#modifying-video-stream-properties)
+  * [Cameras](https://github.com/jbhunt/parallel-pyspin/#cameras)
+    - [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#creating-an-instance-of-a-primary-camera)
+    - [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
+    - [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
+  * [System](https://github.com/jbhunt/parallel-pyspin/#systems)
+- [Acknowledgements](https://github.com/jbhunt/parallel-pyspin/#acknowlegements)
+- [Contact](https://github.com/jbhunt/parallel-pyspin/#contact)
 
 # Installation #
 TODO : Document the installation procedure.
@@ -109,3 +125,6 @@ TODO : Document this.
 
 # Acknowledgements #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
+
+# Contact #
+For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.

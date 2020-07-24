@@ -22,8 +22,8 @@ For questions or general correspondence please send an email to hunt.brian.joshu
 # 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
-- Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
-- True synchronous video acquisition for multiple cameras
+1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
+2. True synchronous video acquisition for multiple cameras
 
 This package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
 

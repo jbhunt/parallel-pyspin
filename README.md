@@ -97,9 +97,9 @@ A secondary camera's acquisition is coupled to the primary camera's acquisition.
 >>> from llpyspin.capture import SecondaryCamera
 >>> device2 = str(87654321)
 >>> cam2 = SecondaryCamera(device2)
->>> cam.isPrimed()
+>>> cam2.isPrimed()
 True
->>> cam.trigger() # the SecondaryCamera class lacks the trigger method
+>>> cam2.trigger() # the SecondaryCamera class lacks the trigger method
 AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 >>> cam3 ... # and so on
 ```

@@ -36,7 +36,7 @@ True
 ```
 
 ### Modifying video stream properties ###
-You can modify a camera's framerate, exposure, or binsize using the VideoStream object's 'set' method. In this example the exposure is changed from the default value (1500 us) to a new target value. Supported capture properties are stored in the `llpyspin.constants` module. You can query the value of a capture property with the 'get' method.
+You can modify a camera's framerate, exposure, or binsize using the stream's 'set' method. In this example the exposure is changed from the default value (1500 us) to a new target value. Supported capture properties are stored in the `llpyspin.constants` module. You can query the value of a capture property with the 'get' method.
 
 ``` python
 >>> from llpyspin import constants as c

@@ -8,12 +8,12 @@ This package provides another layer of abstraction on top of [PySpin](https://ww
 This package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
 
 # Table of contents #
-1 [Installation](https://github.com/jbhunt/parallel-pyspin/#installation)
-2 [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#parallel-camera-operation)
-3 [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#synchronous-video-acquisition)
-4 [Examples](https://github.com/jbhunt/parallel-pyspin/#examples)
-   4.1 [Streaming](https://github.com/jbhunt/parallel-pyspin/#streaming)
-       4.1.1 [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#creating-a-video-stream)
+1. [Installation](https://github.com/jbhunt/parallel-pyspin/#installation)
+2. [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#parallel-camera-operation)
+3. [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#synchronous-video-acquisition)
+4. [Examples](https://github.com/jbhunt/parallel-pyspin/#examples)
+  4. 4.1 [Streaming](https://github.com/jbhunt/parallel-pyspin/#streaming)
+    4. 4.1.1 [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#creating-a-video-stream)
        4.1.2 [Modifying video stream properties](https://github.com/jbhunt/parallel-pyspin/#modifying-video-stream-properties)
    4.2 [Cameras](https://github.com/jbhunt/parallel-pyspin/#cameras)
        4.2.1 [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#creating-an-instance-of-a-primary-camera)

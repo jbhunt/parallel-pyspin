@@ -25,12 +25,12 @@ This package provides another layer of abstraction on top of [PySpin](https://ww
 1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
 2. True synchronous video acquisition for multiple cameras
 
-There are several other packages that have similar capabilities, but it doesn't appear that these projects are maintained:
+There are several other packages that have similar capabilities and motives, but it doesn't seem like these projects are actively maintained. Feel free to check them out and see if they are better suited for your needs:
 
 1. [multi_pyspin](https://github.com/justinblaber/multi_pyspin)
 2. [simple_pyspin](https://github.com/klecknerlab/simple_pyspin)
 
-This package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
+Finally, this package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
 
 ## 1.1 Parallel camera operation ##
 TODO : Describe how multiprocessing is used to parallelize the camera operation

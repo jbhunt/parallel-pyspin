@@ -2,29 +2,28 @@
 For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
 
 # Table of contents #
-1. [Description](https://github.com/jbhunt/parallel-pyspin/#description)
-   1. [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#parallel-camera-operation)
-   2. [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#synchronous-video-acquisition)
-2. [Installation](https://github.com/jbhunt/parallel-pyspin/#installation)
+1. [Description](https://github.com/jbhunt/parallel-pyspin/#1-description)
+   1. [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#11-parallel-camera-operation)
+   2. [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#12-synchronous-video-acquisition)
+2. [Installation](https://github.com/jbhunt/parallel-pyspin/#2-installation)
    1. [Installing parallel-pyspin](https://github.com/jbhunt/parallel-pyspin/#21-installing-parallel-pyspin)
    2. [Installing PySpin](https://github.com/jbhunt/parallel-pyspin/#22-installing-pyspin)
-3. [Usage](https://github.com/jbhunt/parallel-pyspin/#examples)
-   1. [Streaming](https://github.com/jbhunt/parallel-pyspin/#streaming)
-      1. [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#creating-a-video-stream)
-      2. [Modifying video stream properties](https://github.com/jbhunt/parallel-pyspin/#modifying-video-stream-properties)
-   2. [Cameras](https://github.com/jbhunt/parallel-pyspin/#cameras)
-      1. [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#creating-an-instance-of-a-primary-camera)
-      2. [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
-      3. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
-   3. [System](https://github.com/jbhunt/parallel-pyspin/#systems)
-4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#acknowledgements)
+3. [Usage](https://github.com/jbhunt/parallel-pyspin/#3-usage)
+   1. [Streaming](https://github.com/jbhunt/parallel-pyspin/#31-streaming)
+      1. [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#311-creating-a-video-stream)
+      2. [Modifying video stream properties](https://github.com/jbhunt/parallel-pyspin/#312-modifying-video-stream-properties)
+   2. [Cameras](https://github.com/jbhunt/parallel-pyspin/#32-cameras)
+      1. [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#321-creating-an-instance-of-a-primary-camera)
+      2. [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#322-modifying-camera-properties)
+      3. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#323-modifying-camera-properties)
+   3. [System](https://github.com/jbhunt/parallel-pyspin/#33-systems)
+4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#4-contributers)
 
 # 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
-1.) Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
-
-2.) True synchronous video acquisition for multiple cameras
+- Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
+- True synchronous video acquisition for multiple cameras
 
 This package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
 

@@ -10,7 +10,7 @@ from multiprocessing import Process
 from multiprocessing import Lock
 
 # constants
-import .constants as c
+import llpyspin.constants as c
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -121,13 +121,6 @@ class BaseProcess(Process):
         """
         """
 
-        # check that the mode argument is a valid stream buffer handling mode
-        try:
-            assert mode in ['NewestOnly','MostRecentFirst']
-        except AssertionError:
-            result = False
-            return result
-
         result = True
 
         try:
@@ -167,12 +160,7 @@ class BaseProcess(Process):
 
         # check that the property is valid
         try:
-            assert property in [
-                c.CAP_PROP_FPS,
-                c.CAP_PROP_BINSIZE,
-                c.CAP_PROP_EXPOSURE,
-                c.CAP_PROP_BUFFER_HANDLING_MODE
-                ]
+            assert property in c.SUPPORTED_CAP_PROPS
         except AssertionError:
             result = False
             return result
@@ -211,12 +199,17 @@ class BaseProcess(Process):
             # set buffer handling mode
             elif property == c.CAP_PROP_BUFFER_HANDLING_MODE:
 
+                try:
+                    assert property in [c.CAP_PROP_BUFFER_HANDLING_MODE_STREAMING,c.CAP_PROP_BUFFER_HANDLING_MODE_RECORDING]
+                except AssertionError:
+                    mode = c.CAP_PROP_BUFFER_HANDLING_MODE_DEFAULT
+
                 tlstream_nodemap = camera.GetTLStreamNodeMap()
-                handling_mode = PySpin.CEnumerationPtr(tlstream_nodemap.GetNode('StreamBufferHandlingMode'))
-                if PySpin.IsAvailable(handling_mode) and PySpin.IsWritable(handling_mode):
-                    handling_mode_value = handling_mode.GetEntryByName(value)
-                    if PySpin.IsAvailable(handling_mode_oldest_first) and PySpin.IsReadable(handling_mode_value):
-                        handling_mode.SetIntValue(handling_mode_value.GetValue())
+                handling_mode_node = PySpin.CEnumerationPtr(tlstream_nodemap.GetNode('StreamBufferHandlingMode'))
+                if PySpin.IsAvailable(handling_mode_node) and PySpin.IsWritable(handling_mode_node):
+                    handling_mode_entry = handling_mode_node.GetEntryByName(value)
+                    if PySpin.IsAvailable(handling_mode_entry) and PySpin.IsReadable(handling_mode_entry):
+                        handling_mode_node.SetIntValue(handling_mode_node.GetValue())
 
         except PySpin.SpinnakerException:
             result = False

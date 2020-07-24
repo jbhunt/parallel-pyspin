@@ -47,9 +47,7 @@ You can modify a camera's framerate, exposure, or binsize using the stream's 'se
 3000
 ```
 
-## Recording ##
-TODO : Add a description here.
-
+## Cameras ##
 ### Creating an instance of a primary camera ###
 A primary camera generates a digital signal which dictates when secondary cameras acquire images. This allows for synchronous acquisition between multiple cameras.
 
@@ -101,10 +99,13 @@ A secondary camera's acquisition is coupled to the primary camera's acquisition.
 >>> cam2 = SecondaryCamera(device2)
 >>> cam.isPrimed()
 True
->>> cam.trigger() # instances of the SecndaryCamera class lack the trigger method
-AttributeError: 'SecondaryCamera' object has not attribute 'trigger'
+>>> cam.trigger() # the SecondaryCamera class lacks the trigger method
+AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 >>> cam3 ... # and so on
 ```
+
+## Systems ##
+TODO : Document this.
 
 # Acknowledgements #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

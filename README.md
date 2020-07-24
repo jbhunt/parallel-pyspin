@@ -1,4 +1,4 @@
-# Parallel-PySpin #
+# parallel-pyspin #
 For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
 
 # Table of contents #

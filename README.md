@@ -19,10 +19,10 @@ TODO : Describe how the cameras are configured for simultaneous video acquisitio
 # Examples #
 ## Streaming ##
 ### Creating a video stream ###
-This example demonstrates how to use the `llpyspin.stream.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality.
+This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Video streams are asynchronous.
 
 ```python
->>> from llpyspin.stream import VideoStream
+>>> from llpyspin.capture import VideoStream
 >>> device = 0 # device index
 >>> cap = VideoStream(device)
 >>> cap.isOpened()
@@ -36,7 +36,7 @@ True
 ```
 
 ### Modifying video stream properties ###
-You can modify a camera's framerate, exposure, or binsize using the VideoStream object's set method. In this example the exposure is changed from the default value (1500 us) to a new target value:
+You can modify a camera's framerate, exposure, or binsize using the VideoStream object's 'set' method. In this example the exposure is changed from the default value (1500 us) to a new target value. Supported capture properties are stored in the `llpyspin.constants` module. You can query the value of a capture property with the 'get' method.
 
 ``` python
 >>> from llpyspin import constants as c
@@ -50,36 +50,38 @@ You can modify a camera's framerate, exposure, or binsize using the VideoStream 
 ## Recording ##
 TODO : Add a description here.
 
-### Basic primary camera use ###
+### Creating an instance of a primary camera ###
+A primary camera generates a digital signal which dictates when secondary cameras acquire images. This allows for synchronous acquisition between multiple cameras.
+
 ```Python
->>> from llpyspin.cameras import PrimaryCamera
+>>> from llpyspin.capture import PrimaryCamera
 >>> device = str(12345678) # primary camera serial number
->>> cam = PrimaryCamera(device)
->>> cam.isPrimed() # check that the camera is primed
+>>> cam1 = PrimaryCamera(device)
+>>> cam1.isPrimed() # check that the camera is primed
 True
->>> cam.prime()
+>>> cam1.prime() # you only need to prime the camera once
 INFO : Video acquisition is already started
->>> cam.trigger() # trigger camera
->>> cam.stop() # stop acquisition
->>> cam.release() # release camera
->>> cam.isPrimed()
+>>> cam1.trigger() # trigger camera
+>>> cam1.stop() # stop acquisition
+>>> cam1.release() # release camera
+>>> cam1.isPrimed()
 False
->>> cam.prime() # you can re-prime the camera for subsequent recordings
->>> cam.isPrimed()
+>>> cam1.prime() # you can re-prime the camera for subsequent recordings
+>>> cam1.isPrimed()
 True
 ```
 
 ### Modifying camera properties ###
-Unlike the `llpyspin.stream.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.cameras.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
+Unlike the `llpyspin.capture.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.capture.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
 
 ```Python
->>> cam.framerate
+>>> cam1.framerate
 120
->>> cam.framerate = 60 # this calls the private class method _set
+>>> cam1.framerate = 60 # this calls the private class method _set
 WARNING : Failed to set framerate to 60 because acquisition is ongoing. # properties can't be set after the camera is primed
->>> cam.stop()
->>> cam.framerate = 60
->>> cam.framerate
+>>> cam1.stop()
+>>> cam1.framerate = 60
+>>> cam1.framerate
 60
 >>> for attr in ['framerate','exposure','binsize','mode','foo']:
         print(hasattr(cam,attr))
@@ -90,7 +92,19 @@ True
 False
 ```
 
-### Setting up a secondary camera ###
+### Adding one or more secondary cameras ###
+A secondary camera's acquisition is coupled to the primary camera's acquisition.
+
+```python
+>>> from llpyspin.capture import SecondaryCamera
+>>> device2 = str(87654321)
+>>> cam2 = SecondaryCamera(device2)
+>>> cam.isPrimed()
+True
+>>> cam.trigger() # instances of the SecndaryCamera class lack the trigger method
+AttributeError: 'SecondaryCamera' object has not attribute 'trigger'
+>>> cam3 ... # and so on
+```
 
 # Acknowledgements #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

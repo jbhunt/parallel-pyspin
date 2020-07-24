@@ -6,6 +6,8 @@ For questions or general correspondence please send an email to hunt.brian.joshu
    1. [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#parallel-camera-operation)
    2. [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#synchronous-video-acquisition)
 2. [Installation](https://github.com/jbhunt/parallel-pyspin/#installation)
+   1. [Installing parallel-pyspin](https://github.com/jbhunt/parallel-pyspin/#installing-parallel-pyspin)
+   2. [Installing PySpin](https://github.com/jbhunt/parallel-pyspin/#installing-pyspin)
 3. [Usage](https://github.com/jbhunt/parallel-pyspin/#examples)
    1. [Streaming](https://github.com/jbhunt/parallel-pyspin/#streaming)
       1. [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#creating-a-video-stream)
@@ -33,12 +35,16 @@ TODO : Describe how multiprocessing is used to parallelize the camera operation
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
 # 2. Installation #
+## 2.1. Installing parallel-pyspin ##
 You can install this pre-release version of this package via pip:
 1. `pip install parallel-pyspin`
 
 You can also clone this repository and run the setup script:
 1. `git clone www.github.com/jbhunt/parallel-pyspin`
 2. `python -m setup.py install`
+
+## 2.2. Installing PySpin ##
+TODO : Document this.
 
 # 3. Usage #
 ## 3.1. Streaming ##

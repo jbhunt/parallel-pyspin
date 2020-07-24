@@ -1,3 +1,6 @@
+# Parallel-PySpin #
+For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
+
 # Table of contents #
 1. [Description](https://github.com/jbhunt/parallel-pyspin/#description)
    1. [Parallel camera operation](https://github.com/jbhunt/parallel-pyspin/#parallel-camera-operation)
@@ -12,8 +15,7 @@
       2. [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
       3. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
    3. [System](https://github.com/jbhunt/parallel-pyspin/#systems)
-4. [Acknowledgements](https://github.com/jbhunt/parallel-pyspin/#acknowlegements)
-5. [Contact](https://github.com/jbhunt/parallel-pyspin/#contact)
+4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#acknowledgements)
 
 # Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
@@ -124,8 +126,5 @@ AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 ## Systems ##
 TODO : Document this.
 
-# Acknowledgements #
+# Contributors #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
-
-# Contact #
-For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.

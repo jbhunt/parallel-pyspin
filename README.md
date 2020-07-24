@@ -48,7 +48,7 @@ TODO : Document this.
 # 3. Usage #
 ## 3.1. Streaming ##
 ### 3.1.1. Creating a video stream ###
-This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Video streams are asynchronous.
+This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
 
 ```python
 >>> from llpyspin.capture import VideoStream

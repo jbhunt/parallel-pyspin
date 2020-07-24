@@ -44,7 +44,7 @@ You can install most recent pre-release version (0.1dev2) of this package via pi
 1. `pip install parallel-pyspin==0.1dev2`
 
 You can also clone this repository and run the setup script:
-1. `git clone www.github.com/jbhunt/parallel-pyspin`
+1. `git clone https://github.com/jbhunt/parallel-pyspin.git`
 2. `python -m setup.py install`
 
 ## 2.2. Installing PySpin ##

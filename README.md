@@ -17,7 +17,7 @@ For questions or general correspondence please send an email to hunt.brian.joshu
    3. [System](https://github.com/jbhunt/parallel-pyspin/#systems)
 4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#acknowledgements)
 
-# Description #
+# 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
 1.) Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
@@ -26,18 +26,18 @@ This package provides another layer of abstraction on top of [PySpin](https://ww
 
 This package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
 
-## Parallel camera operation ##
+## 1.1 Parallel camera operation ##
 TODO : Describe how multiprocessing is used to parallelize the camera operation
 
-## Synchronous video acquisition ##
+## 1.2. Synchronous video acquisition ##
 TODO : Describe how the cameras are configured for simultaneous video acquisition
 
-# Installation #
+# 2. Installation #
 TODO : Document the installation procedure.
 
-# Usage #
-## Streaming ##
-### Creating a video stream ###
+# 3. Usage #
+## 3.1. Streaming ##
+### 3.1.1. Creating a video stream ###
 This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Video streams are asynchronous.
 
 ```python
@@ -54,7 +54,7 @@ True
 >>> cap.release()
 ```
 
-### Modifying video stream properties ###
+### 3.1.2. Modifying video stream properties ###
 You can modify a camera's framerate, exposure, or binsize using the stream's 'set' method. In this example the exposure is changed from the default value (1500 us) to a new target value. Supported capture properties are stored in the `llpyspin.constants` module. You can query the value of a capture property with the 'get' method.
 
 ``` python
@@ -66,8 +66,8 @@ You can modify a camera's framerate, exposure, or binsize using the stream's 'se
 3000
 ```
 
-## Cameras ##
-### Creating an instance of a primary camera ###
+## 3.2. Cameras ##
+### 3.2.1. Creating an instance of a primary camera ###
 A primary camera generates a digital signal which dictates when secondary cameras acquire images. This allows for synchronous acquisition between multiple cameras.
 
 ```Python
@@ -88,7 +88,7 @@ False
 True
 ```
 
-### Modifying camera properties ###
+### 3.2.2. Modifying camera properties ###
 Unlike the `llpyspin.capture.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.capture.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
 
 ```Python
@@ -109,7 +109,7 @@ True
 False
 ```
 
-### Adding one or more secondary cameras ###
+### 3.2.3. Adding one or more secondary cameras ###
 A secondary camera's acquisition is coupled to the primary camera's acquisition.
 
 ```python
@@ -123,8 +123,8 @@ AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 >>> cam3 ... # and so on
 ```
 
-## Systems ##
+## 3.3. Systems ##
 TODO : Document this.
 
-# Contributors #
+# 4. Contributors #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

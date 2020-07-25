@@ -1,6 +1,2 @@
-os
-yaml
-queue
+pyyaml
 numpy
-logging
-multiprocessing

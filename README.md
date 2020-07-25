@@ -40,8 +40,8 @@ TODO : Describe how the cameras are configured for simultaneous video acquisitio
 
 # 2. Installation #
 ## 2.1. Installing parallel-pyspin ##
-You can install most recent pre-release version (0.1dev2) of this package via pip:
-1. `pip install parallel-pyspin==0.1dev2`
+You can install most recent pre-release version (0.1dev4) of this package via pip:
+1. `pip install parallel-pyspin==0.1dev4`
 
 You can also clone this repository and run the setup script:
 1. `git clone https://github.com/jbhunt/parallel-pyspin.git`
@@ -89,17 +89,17 @@ A primary camera generates a digital signal which dictates when secondary camera
 >>> from llpyspin.capture import PrimaryCamera
 >>> device = str(12345678) # primary camera serial number
 >>> cam1 = PrimaryCamera(device)
->>> cam1.isPrimed() # check that the camera is primed
+>>> cam1.primed # check that the camera is primed
 True
 >>> cam1.prime() # you only need to prime the camera once
 INFO : Video acquisition is already started
 >>> cam1.trigger() # trigger camera
 >>> cam1.stop() # stop acquisition
 >>> cam1.release() # release camera
->>> cam1.isPrimed()
+>>> cam1.primed
 False
 >>> cam1.prime() # you can re-prime the camera for subsequent recordings
->>> cam1.isPrimed()
+>>> cam1.primed
 True
 ```
 
@@ -131,7 +131,7 @@ A secondary camera's acquisition is coupled to the primary camera's acquisition.
 >>> from llpyspin.capture import SecondaryCamera
 >>> device2 = str(87654321)
 >>> cam2 = SecondaryCamera(device2)
->>> cam2.isPrimed()
+>>> cam2.primed
 True
 >>> cam2.trigger() # the SecondaryCamera class lacks the trigger method
 AttributeError: 'SecondaryCamera' object has no attribute 'trigger'

@@ -53,7 +53,6 @@ class BaseProcess(Process):
         try:
             assert len(CAMERAS) >= 1
         except AssertionError:
-            logging.warning('No cameras detected.')
             self.started.value = 0
 
         try:
@@ -64,8 +63,7 @@ class BaseProcess(Process):
             else:
                 raise TypeError(f'The device must be a string (serial number) or integer (index) but is {type(self.device)}.')
 
-        except:
-            logging.error('Camera instantiation failed.')
+        except TypeError:
             self.started.value = 0
 
         # main loop
@@ -317,8 +315,6 @@ class PrimaryCameraProcess(BaseProcess):
 
         super().__init__(device)
 
-        self.triggered = Value('i',0)
-
         return
 
     def _configure(self, camera):
@@ -402,12 +398,12 @@ class PrimaryCameraProcess(BaseProcess):
                     # convert the image
                     frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
+                # release the image
+                image.Release()
+
 
         except PySpin.SpinnakerException:
             result = False
-
-        # reset the trigger flag
-        # self.triggered.value = 0
 
         return result
 
@@ -461,26 +457,26 @@ class SecondaryCameraProcess(BaseProcess):
         result = True
 
         try:
-            camera.BeginAcquisition()
 
-            # double-check that the acquisition flag is set to 1
-            try:
-                assert self.acquiring.value == 1
-            except AssertionError:
-                self.acquiring.value = 1
+            # begin aquisition
+            camera.BeginAcquisition()
 
             # main loop
             while self.acquiring.value == 1:
 
-                # this blocks until the hardware trigger is detected
-                # i.e., the secondary cameras need to be started before the primary camera
-                image = camera.GetNextImage()
+
+                # there's a 1 second timeout for the call to GetNextImage to prevent the secondary camera
+                # from blocking when video acquisition is aborted before the primary camera is triggered
+                image = camera.GetNextImage(1000)
 
                 #
                 if not image.IsIncomplete():
 
                     # convert the image
                     frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+
+                # release the image
+                image.Release()
 
 
         except:

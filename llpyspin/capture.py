@@ -565,7 +565,7 @@ class SecondaryCamera(BaseCamera):
             return
 
         # initialize the child process
-        self._initializeChild()
+        self._initializeChild(chidClass=p.SecondaryCameraProcess)
 
         # initialize the camera
         self._child.iq.put('initialize')

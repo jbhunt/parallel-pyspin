@@ -166,7 +166,7 @@ class VideoStream():
 
             # the lock blocks if a new image is being acquired / stored in the image attribute
             with self._child.image.get_lock():
-                image = np.array(self._child.image[:],dtype=np.uint8).reshape(IMAGE_SHAPE)
+                image = np.array(self._child.image[:],dtype=np.uint8).reshape(c.IMAGE_SHAPE)
 
         except:
             image = None

@@ -2,6 +2,7 @@
 import logging
 import numpy as np
 from queue import Empty
+from multiprocessing import TimeoutError
 
 # relative imports
 import llpyspin.constants as c
@@ -216,17 +217,23 @@ class BaseCamera():
     """
     """
 
-    def __init__(self, serialno=None, nickname=None):
+    def __init__(self, serialno, nickname=None):
         """
         """
 
-        # serial number
-        self.serialno = serialno
+        try:
+            assert type(serialno) == str:
+        except AssertionError:
+            logging.error(f'The serial number must be a string.')
+            return
 
-        # nickname
-        self.nickname = serialno
+        #
+        self.serialno  = serialno # camera serial number
+        self._nickname = nickname # camera nickname
+        self._child    = None # child process
+        self._primed   = False
 
-        # set the default values
+        # default capture properties
         self._framerate = c.CAP_PROP_FPS_DEFAULT
         self._binsize   = c.CAP_PROP_BINSIZE_DEFAULT
         self._exposure  = c.CAP_PROP_EXPOSURE_DEFAULT
@@ -234,19 +241,66 @@ class BaseCamera():
 
         return
 
-    def isPrimed(self):
+    def _destroyChild(self):
         """
-        returns the state of acquisition
+        destroy the child process
         """
 
-        return True if hasattr(self,'_child') and self._child.acquiring.value == 1 else False
+        # empty out the input and output queues - if the queues aren't empty the process can hang
+        while self._child.iq.qsize() != 0:
+            result = self._child.iq.get()
+
+        while self._child.oq.qsize() != 0:
+            result = self._child.oq.get()
+
+        # break out of the main loop
+        self._child.started.value = 0
+
+        # try to join the child process with the parent process
+        try:
+            self._child.join(3) # 3 second timeout
+        except TimeoutError:
+            logging.warning('The child process is deadlocked. Terminating.')
+            self._child.terminate()
+            self._child.join()
+
+        # delete the process instance
+        self._child = None
+
+        return
+
+    def _resetProperties(self):
+        """
+        set the capture properties to their current values
+        """
+
+        properties = [
+            c.CAP_PROP_FPS,
+            c.CAP_PROP_BINSIZE,
+            c.CAP_PROP_EXPOSURE,
+            c.CAP_PROP_BUFFER_HANDLING_MODE
+            ]
+
+        values = [
+            self._framerate,
+            self._binsize,
+            self._exposure,
+            self._mode
+            ]
+
+        for property,value in zip(properties,values):
+            result = self._set(property,value)
+            if not result:
+                logging.warning(f'Failed to set {property} to {value}.')
+
+        return
 
     def release(self):
         """
         """
 
         # stop acquisition if acquiring
-        if self.isPrimed() is True:
+        if self.primed is True:
             logging.info('Stopping video acquisition.')
             self.stop()
 
@@ -351,30 +405,65 @@ class BaseCamera():
         if result:
             self._mode = value
 
+    # nickname
+    @property
+    def nickname(self):
+        return self._nickname
+    @nickname.setter
+    def nickname(self, value):
+        self._nickname = value
+
+    # camera ready state
+    @property
+    def primed(self):
+        self._primed = True if self._child is not None and self._child.acquiring.value == 1 else False
+        return self._primed
+    @primed.setter
+    def primed(self, value):
+        logging.warning('The "primed" attribute cannot be set manually.')
+
 class PrimaryCamera(BaseCamera):
     """
     """
 
-    def __init__(self, serialno=None, nickname=None):
+    def __init__(self, serialno, nickname=None):
         """
         """
 
         super().__init__(serialno, nickname)
 
-        self.serialno = c.PRIMARY_SERIALNO if serialno is None else serialno
+        # camera ready state
+        self._primed = False
 
-        self.nickname = c.PRIMARY_NICKNAME if serialno is None else nickname
+        # camera trigger state
+        self._triggered = False
 
+        # prime the camera
         self.prime()
 
         return
 
-    def _createChild(self):
+    def _initializeChild(self):
         """
-        create and start the child process
+        initialize (or re-initialize) the child process
         """
 
+        # destroy the child process if one already exists
+        try:
+            assert self._child is None
+
+        except AssertionError:
+
+            # log this event
+            logging.info('Restarting the child process.')
+
+            # destroy the child
+            self._destroyChild()
+
+        # (re-)instantiate the child process
         self._child = p.PrimaryCameraProcess(self.serialno)
+
+        # start the child process
         self._child.start()
 
         return
@@ -386,14 +475,13 @@ class PrimaryCamera(BaseCamera):
 
         # check that the camera isn't acquiring
         try:
-            assert self.isPrimed() is False
+            assert self.primed is False
         except AssertionError:
             logging.info('Video acquisition is already started.')
             return
 
-        # (re-)start the child process if needed
-        if not hasattr(self,'_child') or not self._child.is_alive(): # the order of these conditions is important
-            self._createChild()
+        # intitialize (or re-initialize) the child process
+        self._initializeChild()
 
         # initialize the camera
         self._child.iq.put('initialize')
@@ -403,10 +491,7 @@ class PrimaryCamera(BaseCamera):
             return
 
         # set the acquisition properties
-        for (property,value) in vars(self).items():
-            property = property.strip('_')
-            if property in c.SUPPORTED_CAP_PROPS:
-                result = self._set(property,value)
+        self._resetProperties()
 
         # configure the camera
         self._child.iq.put('configure')
@@ -415,7 +500,14 @@ class PrimaryCamera(BaseCamera):
             logging.error('Camera configuration failed.')
             return
 
+        # set the acquiring flag to 1
+        self._child.acquiring.value = 1
+
+        # send the acquisition command
         self._child.iq.put('acquire')
+
+        # set the triggered flag to False
+        self._triggered = False
 
         return
 
@@ -425,12 +517,12 @@ class PrimaryCamera(BaseCamera):
         """
 
         # start acquisition if necessary
-        if not self.isPrimed():
+        if not self.primed:
             logging.warning('Video acquisition is not started. Call the prime method.')
             return
 
-        # trigger the camera
-        self._child.triggered.value = 1
+        self._triggered = True
+        self._child.iq.put(self._triggered)
 
         return
 
@@ -441,36 +533,38 @@ class PrimaryCamera(BaseCamera):
 
         # check that the camera is acquiring
         try:
-            assert self.isPrimed() is True
+            assert self.primed is True
         except AssertionError:
             logging.info('Video acquisition is already stopped.')
             return
 
+        # release the trigger if the camera is still waiting for it
+        if not self._triggered:
+            self._child.iq.put(self._triggered)
+
         # break out of the acquisition loop
         self._child.acquiring.value = 0
 
-        # TODO : implement a time out (see stop method of SecondaryCamera)
-        # check if camera is waiting for trigger
-        try:
-            assert self._child.triggered.value == 0
-        except AssertionError:
-            self._child.triggered.value = 0 # release the trigger
-
         # retreive the result (sent after exiting the acquisition loop)
         result = self._child.oq.get()
-
         if not result:
             logging.warning('Video acquisition failed.')
 
         # stop acquisition
         self._child.iq.put('deacquire')
         result = self._child.oq.get()
-
-        # check result
         if not result:
             logging.warning('Failed to stop video acquisition.')
 
         return
+
+    # camera trigger state
+    @property
+    def triggered(self):
+        return self._triggered
+    @triggered.setter
+    def triggered(self, value):
+        self._triggered = value
 
 class SecondaryCamera(BaseCamera):
     """

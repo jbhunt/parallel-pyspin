@@ -380,18 +380,16 @@ class PrimaryCameraProcess(BaseProcess):
             camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
             camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
 
-            # double-check that the acquisition flag is set to 1
-            try:
-                assert self.acquiring.value == 1
-            except AssertionError:
-                self.acquiring.value = 1
+            # block while waiting for the trigger command
+            triggered = self.iq.get()
 
-            # wait for the trigger
-            while not self.triggered.value:
-                continue
+            # release trigger
+            if triggered:
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
-            # release the trigger
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+            # abort acquisition
+            else:
+                return result
 
             # main loop
             while self.acquiring.value == 1:
@@ -405,11 +403,11 @@ class PrimaryCameraProcess(BaseProcess):
                     frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
 
-        except:
+        except PySpin.SpinnakerException:
             result = False
 
         # reset the trigger flag
-        self.triggered.value = 0
+        # self.triggered.value = 0
 
         return result
 

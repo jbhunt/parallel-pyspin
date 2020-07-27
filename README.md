@@ -41,8 +41,8 @@ TODO : Describe how the cameras are configured for simultaneous video acquisitio
 
 # 2. Installation #
 ## 2.1. Installing parallel-pyspin ##
-You can install most recent pre-release version (0.2.dev1) of this package via pip:
-1. `pip install parallel-pyspin==0.2.dev1`
+You can install most recent pre-release version (0.2.dev2) of this package via pip:
+1. `pip install parallel-pyspin==0.2.dev2`
 
 You can also clone this repository and run the setup script:
 1. `git clone https://github.com/jbhunt/parallel-pyspin.git`

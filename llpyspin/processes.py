@@ -203,11 +203,11 @@ class BaseProcess(Process):
                     mode = c.CAP_PROP_BUFFER_HANDLING_MODE_DEFAULT
 
                 tlstream_nodemap = camera.GetTLStreamNodeMap()
-                handling_mode_node = PySpin.CEnumerationPtr(tlstream_nodemap.GetNode('StreamBufferHandlingMode'))
-                if PySpin.IsAvailable(handling_mode_node) and PySpin.IsWritable(handling_mode_node):
-                    handling_mode_entry = handling_mode_node.GetEntryByName(value)
+                handling_mode = PySpin.CEnumerationPtr(tlstream_nodemap.GetNode('StreamBufferHandlingMode'))
+                if PySpin.IsAvailable(handling_mode) and PySpin.IsWritable(handling_mode):
+                    handling_mode_entry = handling_mode.GetEntryByName(value)
                     if PySpin.IsAvailable(handling_mode_entry) and PySpin.IsReadable(handling_mode_entry):
-                        handling_mode_node.SetIntValue(handling_mode_node.GetValue())
+                        handling_mode.SetIntValue(handling_mode_entry.GetValue())
 
         except PySpin.SpinnakerException:
             result = False
@@ -259,7 +259,7 @@ class VideoStreamProcess(BaseProcess):
 
         super().__init__(device)
 
-        self.image = Array('i',IMAGE_SIZE)
+        self.image = Array('i',c.IMAGE_SIZE)
 
         return
 
@@ -465,9 +465,17 @@ class SecondaryCameraProcess(BaseProcess):
             while self.acquiring.value == 1:
 
 
-                # there's a 1 second timeout for the call to GetNextImage to prevent the secondary camera
-                # from blocking when video acquisition is aborted before the primary camera is triggered
-                image = camera.GetNextImage(1000)
+                ### NOTE ###
+                #
+                # There's a 3 second timeout for the call to GetNextImage to prevent
+                # the secondary camera from blocking when video acquisition is
+                # aborted before the primary camera is triggered (see below).
+                #
+
+                try:
+                    image = camera.GetNextImage(3000)
+                except PySpin.SpinnakerException:
+                    continue
 
                 #
                 if not image.IsIncomplete():
@@ -477,7 +485,6 @@ class SecondaryCameraProcess(BaseProcess):
 
                 # release the image
                 image.Release()
-
 
         except:
             result = False

@@ -18,6 +18,7 @@ For questions or general correspondence please send an email to hunt.brian.joshu
       3. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#323-modifying-camera-properties)
    3. [System](https://github.com/jbhunt/parallel-pyspin/#33-systems)
 4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#4-contributers)
+5. [TODO list](https://github.com/jbhunt/parallel-pyspin/#5-todo-list)
 
 # 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
@@ -104,18 +105,18 @@ True
 ```
 
 ### 3.2.2. Modifying camera properties ###
-Unlike the `llpyspin.capture.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.capture.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are framerate, exposure, binsize, and mode (mode refers to the stream buffer handling mode).
+Unlike the `llpyspin.capture.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.capture.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are 'framerate', 'exposure', 'binsize', and 'buffermode' (buffermode refers to the stream buffer handling mode).
 
 ```Python
 >>> cam1.framerate
 120
->>> cam1.framerate = 60 # this calls the private class method _set
+>>> cam1.framerate = 60 # this calls the private class method _setProperty
 WARNING : Failed to set framerate to 60 because acquisition is ongoing. # properties can't be set after the camera is primed
 >>> cam1.stop()
 >>> cam1.framerate = 60
 >>> cam1.framerate
 60
->>> for attr in ['framerate','exposure','binsize','mode','foo']:
+>>> for attr in ['framerate','exposure','binsize','buffermode','foo']:
         print(hasattr(cam,attr))
 True
 True
@@ -133,9 +134,8 @@ A secondary camera's acquisition is coupled to the primary camera's acquisition.
 >>> cam2 = SecondaryCamera(device2)
 >>> cam2.primed
 True
->>> cam2.trigger() # the SecondaryCamera class lacks the trigger method
+>>> cam2.trigger() # the SecondaryCamera class has no trigger method
 AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
->>> cam3 ... # and so on
 ```
 
 ## 3.3. Systems ##
@@ -143,3 +143,7 @@ TODO : Document this.
 
 # 4. Contributors #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
+
+# 5. TODO list #
+- Move from using queues to implement the camera trigger to using a multiprocessing Event object.
+- Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.

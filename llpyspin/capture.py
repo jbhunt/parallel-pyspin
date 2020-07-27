@@ -45,7 +45,7 @@ class ChildProcessWrapper():
             self._destroyChild()
 
         # (re-)instantiate the child process
-        self._child = childClass(self.serialno)
+        self._child = childClass(self.device)
 
         # start the child process
         self._child.start()
@@ -211,7 +211,7 @@ class VideoStream(ChildProcessWrapper):
             True if streaming else False
         """
 
-        result = True if self._child.acquiring.value == 1 else False
+        result = True if self._child is not None and self._child.acquiring.value == 1 else False
 
         return result
 
@@ -245,6 +245,8 @@ class VideoStream(ChildProcessWrapper):
         except AssertionError:
             logging.info('Video stream is already stopped.')
             return
+
+        logging.info('Releaseing video stream.')
 
         # break out of the acquisition loop
         self._child.acquiring.value = 0
@@ -286,6 +288,7 @@ class VideoStream(ChildProcessWrapper):
 
         #
         if self.isOpened():
+            logging.info('Restarting video stream.')
             self.release()
 
         # update the value of the class attribute
@@ -319,7 +322,7 @@ class BaseCamera(ChildProcessWrapper):
         """
 
         try:
-            assert type(serialno) == str:
+            assert type(serialno) == str
         except AssertionError:
             logging.error(f'The serial number must be a string.')
             return
@@ -327,7 +330,7 @@ class BaseCamera(ChildProcessWrapper):
         super().__init__()
 
         #
-        self.serialno  = serialno # camera serial number
+        self.device  = serialno # camera serial number
         self._nickname = nickname # camera nickname
         self._primed   = False
 
@@ -417,7 +420,7 @@ class BaseCamera(ChildProcessWrapper):
         return self._primed
     @primed.setter
     def primed(self, value):
-        logging.warning("The 'primed' attribute can't be set manually.")
+        logging.warning("The 'primed' attribute cannot be set manually.")
 
 class PrimaryCamera(BaseCamera):
     """
@@ -565,7 +568,7 @@ class SecondaryCamera(BaseCamera):
             return
 
         # initialize the child process
-        self._initializeChild(chidClass=p.SecondaryCameraProcess)
+        self._initializeChild(childClass=p.SecondaryCameraProcess)
 
         # initialize the camera
         self._child.iq.put('initialize')
@@ -583,6 +586,9 @@ class SecondaryCamera(BaseCamera):
         if not result:
             logging.error('Camera configuration failed.')
             return
+
+        # set the acquiring flag to 1
+        self._child.acquiring.value = 1
 
         self._child.iq.put('acquire')
 

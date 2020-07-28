@@ -55,7 +55,7 @@ Part of the installation procedure is increasing the memory limit for USB device
 
 `python -m ./install.py --increase-memory-limit --memory-limit 1200`
 
-This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README). There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
+This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README) as well as the installation of the PySpin Wheel. There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
 
 # 3. Usage #
 ## 3.1. Streaming ##

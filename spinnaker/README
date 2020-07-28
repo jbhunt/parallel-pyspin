@@ -1,0 +1,363 @@
+//=============================================================================
+// Copyright (c) 2001-2019 FLIR Systems, Inc. All Rights Reserved.
+//
+// This software is the confidential and proprietary information of FLIR
+// Integrated Imaging Solutions, Inc. ("Confidential Information"). You
+// shall not disclose such Confidential Information and shall use it only in
+// accordance with the terms of the license agreement you entered into
+// with FLIR Integrated Imaging Solutions, Inc. (FLIR).
+//
+// FLIR MAKES NO REPRESENTATIONS OR WARRANTIES ABOUT THE SUITABILITY OF THE
+// SOFTWARE, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+// PURPOSE, OR NON-INFRINGEMENT. FLIR SHALL NOT BE LIABLE FOR ANY DAMAGES
+// SUFFERED BY LICENSEE AS A RESULT OF USING, MODIFYING OR DISTRIBUTING
+// THIS SOFTWARE OR ITS DERIVATIVES.
+//=============================================================================
+
+===============================================================================
+==
+== README
+==
+===============================================================================
+
+===============================================================================
+TABLE OF CONTENTS
+===============================================================================
+1. DEPENDENCIES
+1.1. UBUNTU 18.04 DEPENDENCIES
+1.1.1. DEPENDENCY INSTALLATION
+1.2. UBUNTU 16.04 DEPENDENCIES
+1.2.1. DEPENDENCY INSTALLATION
+2. SPINNAKER INSTALLATION
+3. USB RELATED NOTES
+4. GIGE CAMERA SETUP
+4.1. DISABLE REVERSE PATH FILTERING (RPF)
+4.2. INCREASE RECEIVE BUFFER SIZE
+4.3. ENABLE JUMBO PACKET
+5. SPINNAKER REMOVAL
+6. RUNNING PREBUILT UTILITIES
+6.1. SPINVIEW QT
+6.2. SPINUPDATECONSOLE
+
+
+===============================================================================
+1. DEPENDENCIES
+===============================================================================
+To install Spinnaker on linux a few prerequisite libraries will need to be installed.
+
+-------------------------------------------------------------------------------
+1.1. UBUNTU 18.04 DEPENDENCIES
+-------------------------------------------------------------------------------
+For Ubuntu 18.04 LTS, below is a list of libraries that Spinnaker and other
+components depend on:
+
+1) Core Image Acquisition Library
+The core library includes Spinnaker and Spinnaker-C
+
+- libusb-1.0-0 (version 1.0.17 or greater recommended)
+
+2) Graphical User Interface Factory Library
+GTKmm is an optional supported GUI toolkit.
+
+- libgtkmm-2.4-dev
+
+3) Video Recording Library
+Video recording functionalities are provided by SpinVideo. SpinView_Qt and examples
+like SaveToAvi depend on SpinVideo.
+
+- libavcodec57
+- libavformat57
+- libswscale4
+- libswresample2
+- libavutil55
+
+Strongly recommended:
+Ubuntu 18.04 LTS:   Linux kernel version 4.15.0-20 or later.
+
+-------------------------------------------------------------------------------
+1.1.1. DEPENDENCY INSTALLATION
+-------------------------------------------------------------------------------
+To install these dependencies, the most straightforward approach is to use the
+system's built-in package management utility. In the case of Ubuntu, the utility
+is named "apt". Below is a one-line commands that can be used to install
+all the required dependencies for Ubuntu 18.04 Long Term Support (LTS):
+
+$ sudo apt-get install libavcodec57 libavformat57 \
+libswscale4 libswresample2 libavutil55 libusb-1.0-0 libgtkmm-2.4-dev
+
+-------------------------------------------------------------------------------
+1.2. UBUNTU 16.04 DEPENDENCIES
+-------------------------------------------------------------------------------
+For Ubuntu 16.04 LTS, below is a list of libraries that Spinnaker and other
+components depend on:
+
+1) Core Image Acquisition Library
+The core library includes Spinnaker and Spinnaker-C
+
+- libusb-1.0-0 (version 1.0.17 or greater recommended)
+
+Strongly recommended:
+Ubuntu 16.04 LTS:   Linux kernel version 4.4.19-35 or later.
+
+2) Graphical User Interface Factory Library
+GTKmm is an optional supported GUI toolkit.
+
+- libgtkmm-2.4-dev
+
+3) Video Recording Library
+Recording functions are required for SpinVideo. SpinView and examples like
+SaveToAvi depend on SpinVideo.
+
+- libavcodec-ffmpeg56
+- libavformat-ffmpeg56
+- libswscale-ffmpeg3
+- libswresample-ffmpeg1
+- libavutil-ffmpeg54
+
+-------------------------------------------------------------------------------
+1.2.1. DEPENDENCY INSTALLATION
+-------------------------------------------------------------------------------
+Below is a one-line commands that can be used to install all the required
+dependencies for Ubuntu 16.04 Long Term Support (LTS):
+
+Ubuntu 16.04:
+$ sudo apt-get install libavcodec-ffmpeg56 libavformat-ffmpeg56 \
+libswscale-ffmpeg3 libswresample-ffmpeg1 libavutil-ffmpeg54 \
+libusb-1.0-0 libgtkmm-2.4-dev
+
+===============================================================================
+2. SPINNAKER INSTALLATION
+===============================================================================
+
+Once all the Dependencies are installed, install the Spinnaker deb files, using
+the install script 'install_spinnaker.sh' provided in the directory spinnaker
+was extracted into.
+
+code eg:
+$ sudo sh install_spinnaker.sh
+
+This script will install all the Spinnaker libraries, example code, example
+apps and documentation. The Spinnaker install script will also ask a user to
+configure udev so that the user will be able to use the usb devices. If the
+user chooses to configure the usb devices this script will change
+permissions on the nodes to give this particular user full read and write
+access to the device nodes.
+
+Unfortunately restarting udev doesn't seem to set the permissions on the device
+nodes immediately. The machine may need to be rebooted before the user can
+access the device nodes.
+
+The Spinnaker packages are:
+- libspinnaker-<version>_<platform>.deb
+- libspinnaker-<version>_<platform>-dev.deb
+- libspinnaker-c-<version>_<platform>.deb
+- libspinnaker-c-<version>_<platform>-dev.deb
+- libspinvideo-<version>_<platform>.deb
+- libspinvideo-<version>_<platform>-dev.deb
+- libspinvideo-c-<version>_<platform>.deb
+- libspinvideo-c-<version>_<platform>-dev.deb
+- spinview-qt-<version>_<platform>.deb
+- spinview-qt-<version>_<platform>-dev.deb
+- spinupdate-<version>_<platform>.deb
+- spinupdate-<version>_<platform>-dev.deb
+- spinnaker-<version>_<platform>.deb
+- spinnaker-doc-<version>_<platform>.deb
+
+The packages with a preceding 'lib' are all the shared objects and their
+respective dev packages.  The spinnaker package installs the capture application
+which can be launched by typing 'spinview' in a terminal or through the
+Applications menu.  The spinnaker-doc package contains our documentation in
+pdf format (located in /usr/share/doc/spinnaker-doc).
+
+===============================================================================
+3. USB RELATED NOTES
+===============================================================================
+
+On Linux systems, the USB-FS memory is restricted to 16 MB or less by default. To
+increase this limit to make use of the imaging hardware's full capabilities, a
+minor change needs to be made to the system.
+
+To PERMANENTLY modify the USB-FS memory:
+
+    1. Open the /etc/default/grub file in any text editor. Find and replace:
+
+    GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
+
+    with this:
+
+    GRUB_CMDLINE_LINUX_DEFAULT="quiet splash usbcore.usbfs_memory_mb=1000"
+
+    2. Update grub with these settings:
+    $ sudo update-grub
+
+    3. Reboot and test a USB 3.1 camera.
+
+If this method fails to set the memory limit, to TEMPORARILY modify the USB-FS
+memory until the next reboot, run the following command:
+    $ sudo sh -c 'echo 1000 > /sys/module/usbcore/parameters/usbfs_memory_mb'
+
+To confirm that the memory limit has been successfully updated, run the following command:
+$ cat /sys/module/usbcore/parameters/usbfs_memory_mb
+
+
+If using multiple USB3 cameras, the USB-FS memory limit may need to exceed 1000.
+More information on these changes can be found at:
+<https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux>
+
+===============================================================================
+4. GIGE CAMERA SETUP
+===============================================================================
+
+-------------------------------------------------------------------------------
+4.1. DISABLE REVERSE PATH FILTERING (RPF)
+-------------------------------------------------------------------------------
+RPF is a security feature that limits the effect of DDOS attacks. To ensure
+that GigE cameras enumerate properly, RPF needs to be disabled.
+
+To PERMANENTLY disable reverse path filtering:
+    1. Run the following command:
+    $ sudo gedit /etc/sysctl.d/10-network-security.conf
+
+    Comment out the lines below in /etc/sysctl.d/10-network-security.conf:
+
+    # Turn on Source Address Verification in all interfaces to
+    # in order to prevent some spoofing attacks.
+    ## net.ipv4.conf.default.rp_filter=1
+    ## net.ipv4.conf.all.rp_filter=1
+
+    2. Restart the computer.
+
+
+To TEMPORARILY disable reverse path filtering for a specific network adapter
+until the next reboot, eg. eth1, run the following commands:
+    $ sudo sysctl -w net.ipv4.conf.all.rp_filter=0
+    $ sudo sysctl -w net.ipv4.conf.eth1.rp_filter=0
+
+Once RPF is disabled, the GigE camera should show up in SpinView Devices panel.
+If the camera's subnet mismatches the subnet of the network adapter (with
+an exclamation mark), right-click GEV Interface and click "Auto Force IP".
+
+To configure the IP address / subnet mask, or set a persisent IP, more
+information can be found at:
+<https://www.flir.com/support-center/iis/machine-vision/knowledge-base/setting-an-ip-address-for-a-gige-camera-to-be-recognized-in-linux/>
+
+-------------------------------------------------------------------------------
+4.2. INCREASE RECEIVE BUFFER SIZE
+-------------------------------------------------------------------------------
+The receive buffer size is strongly recommended to be increased, in order to
+greatly improve streaming results.
+
+To PERMANENTLY update the receive buffer size:
+    1. Run the following command:
+    $ sudo gedit /etc/sysctl.conf
+
+    Add the following lines to the bottom of the /etc/sysctl.conf file:
+
+    net.core.rmem_max=10485760
+    net.core.rmem_default=10485760
+
+    Once changes are persisted, they can be reloaded at any time by running the
+    following command in sysctl:
+    $ sudo sysctl -p
+
+
+To TEMPORARILY update the receive buffer size until the next reboot, run the
+following commands:
+    $ sudo sysctl -w net.core.rmem_max=10485760
+    $ sudo sysctl -w net.core.rmem_default=10485760
+
+More information can be found at:
+<https://www.flir.com/support-center/iis/machine-vision/knowledge-base/lost-ethernet-data-packets-on-linux-systems-using-flycapture2/>
+
+-------------------------------------------------------------------------------
+4.3. ENABLE JUMBO PACKET
+-------------------------------------------------------------------------------
+
+Jumbo Packet is strongly recommended to be enabled for the network adapter and
+the camera, in order to greatly improve streaming results.
+
+Run ifconfig and find the network adapter that the cameras are connected to
+(eg. enp15s0):
+
+$ ifconfig
+
+It might be necessary to disconnect the camera and run ifconfig again to find
+the output difference, in order to find the network adapter name.
+
+To PERMANENTLY enable Jumbo Packet for a specific network adapter, eg. enp15s0:
+
+    1. Open up /etc/network/interfaces in a text editor (as sudo):
+
+    $ sudo gedit /etc/network/interfaces
+
+    2. Add the following lines
+    (change enp15s0 to match the name of the adapter connected to the camera,
+    the address and netmask of the network adapter can also be configured here):
+
+    iface enp15s0 inet static
+    address 169.254.0.64
+    netmask 255.255.0.0
+    mtu 9000
+
+    auto enp15s0
+
+    3. Reboot the computer before using any GigE cameras.
+
+To TEMPORARILY update enable Jumbo Packet until the next reboot, for a specific
+network adapter, eg. enp15s0, run the following commands:
+    $ sudo ifconfig enp15s0 mtu 9000
+
+
+To enable Jumbo Packet for the GigE camera, change SCPS Packet Size
+(GevSCPSPacketSize) to 9000 in SpinView or via Spinnaker API.
+
+
+If using multiple interfaces, ensure that the addresses used are on different
+subnets (eg. 169.254.0.64/255.255.0.0 and 169.253.0.64/255.255.0.0).
+More information can be found at:
+<https://www.flir.com/support-center/iis/machine-vision/application-note/setting-up-multiple-gige-cameras/>
+
+===============================================================================
+5. SPINNAKER REMOVAL
+===============================================================================
+
+To remove Spinnaker, run the uninstall script that is provided.  The removal
+script will also remove the udev rules therefore restoring the original ubuntu
+permissions on the device nodes.
+
+code eg:
+$ sudo sh remove_spinnaker.sh
+
+===============================================================================
+6. RUNNING PREBUILT UTILITIES
+===============================================================================
+In addition to prebuilt examples (eg: Acquisition, ChunkData, etc),
+along with the source code for these examples, Spinnaker SDK ships with a
+a number of prebuilt tools for evaluating cameras (ie: SpinView), upgrading
+firmware (ie: SpinUpdateConsole), and so on.
+
+To make using these tools more convenient, Spinnaker SDK ships with a few
+command-line scripts used to automatically set the appropriate environment
+variables so these tools can be run from any PWD via the command-line, or when
+launching the tools via a custom icon/shortcut. To run the following tools,
+simply invoke their "launcher" command via the command line, and it is not
+required to change the PWD to "/usr/bin" or modify environment variables in
+order to launch them.
+
+-------------------------------------------------------------------------------
+6.1. SpinView Qt
+-------------------------------------------------------------------------------
+SpinView Qt: A graphical application for testing cameras and viewing live
+             streaming of image data from all supported FLIR cameras.
+Location:   /usr/bin/SpinView_QT
+Short Name: SpinView
+Launcher:   spinview
+
+-------------------------------------------------------------------------------
+6.2. SpinUpdateConsole
+-------------------------------------------------------------------------------
+SpinUpdateConsole: A console application for updating the firmware on FLIR cameras.
+Location:   /usr/bin/SpinUpdateConsole
+Short Name: SpinUpdateConsole
+Launcher:   SpinUpdateConsole

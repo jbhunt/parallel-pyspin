@@ -1,0 +1,8 @@
+libusb-1.0-0
+libgtkmm-2.4-dev
+libavcodec57
+libavformat57
+libswscale4
+libswresample2
+libavutil55
+

@@ -49,7 +49,7 @@ You can also clone this repository and run the setup script:
 2. `python -m setup.py install`
 
 ## 2.2. Installing PySpin ##
-TODO : Document this.
+The only other software this package depends on is the Spinnaker SDK including PySpin. You can install it yourself - take a look [here](https://www.flir.com/products/spinnaker-sdk). Alternatively, if you are using Ubuntu 18.04 and Python 3 you can run [this](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) script and it should take care of the installation for you. 
 
 # 3. Usage #
 ## 3.1. Streaming ##

@@ -36,6 +36,18 @@ subprocess.call(['sudo','pip','install',wheel])
 # modify GRUB's config file
 if args.increase_memory_limit:
 
+    try:
+        assert args.memory_limit <= 2000
+    except AssertionError:
+        print("It's not recommended to set the buffer size to greater than 2000 MB. Defaulting to 1200 MB.")
+        args.memory_limit = 1200
+
+    try:
+        assert args.memroy_limit >= 16
+    except AssertionError:
+        print("It's not recommended to set the buffer size to less than 16 MB. Defaulting to 1200 MB.")
+        args.memory_limit = 1200
+
     with open(args.default_grub,'r') as stream:
         lines = stream.readlines()
 
@@ -50,4 +62,4 @@ if args.increase_memory_limit:
     # reboot
     answer = input('The computer needs to be rebooted for these changes to take effect. Reboot now? [Y/N]\n')
     if answer in ['y','Y','yes','Yes']:
-        subproces.run(['reboot','now'])
+        subproces.call(['reboot','now'])

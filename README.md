@@ -49,7 +49,13 @@ You can also clone this repository and run the setup script:
 2. `python -m setup.py install`
 
 ## 2.2. Installing PySpin ##
-The only other software this package depends on is the Spinnaker SDK including PySpin. You can install it yourself - take a look [here](https://www.flir.com/products/spinnaker-sdk). Alternatively, if you are using Ubuntu 18.04 and Python 3 you can run [this](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) script and it should take care of the installation for you. 
+The only other software this package depends on is the Spinnaker SDK including PySpin. You can install it yourself - take a look [here](https://www.flir.com/products/spinnaker-sdk). Alternatively, if you are using Ubuntu 18.04 and Python 3 you can run [this](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) script and it should take care of the installation for you. There's a couple options you can specify via the command line.
+
+Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). This can cause issues if you are using a camera with high resolution or at a high framerate or when using multiple cameras. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify how much to increase the memory limit with the `memory-limit` argument:
+
+`python -m ./install.py --increase-memory-limit --memory-limit 1200`
+
+This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README). There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
 
 # 3. Usage #
 ## 3.1. Streaming ##

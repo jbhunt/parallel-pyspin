@@ -14,9 +14,7 @@ For questions or general correspondence please send an email to hunt.brian.joshu
       2. [Modifying video stream properties](https://github.com/jbhunt/parallel-pyspin/#312-modifying-video-stream-properties)
    2. [Cameras](https://github.com/jbhunt/parallel-pyspin/#32-cameras)
       1. [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#321-creating-an-instance-of-a-primary-camera)
-      2. [Modify camera properties](https://github.com/jbhunt/parallel-pyspin/#322-modifying-camera-properties)
-      3. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#323-modifying-camera-properties)
-   3. [System](https://github.com/jbhunt/parallel-pyspin/#33-systems)
+      2. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#322-modifying-camera-properties)
 4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#4-contributers)
 5. [TODO list](https://github.com/jbhunt/parallel-pyspin/#5-todo-list)
 
@@ -63,9 +61,9 @@ This script takes care of steps 1-3 of the procedures for installation outlined 
 This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
 
 ```python
->>> from llpyspin.capture import VideoStream
+>>> import llpyspin
 >>> device = 0 # device index
->>> cap = VideoStream(device)
+>>> cap = llpyspin.VideoStream(device)
 >>> cap.isOpened()
 True
 >>> result,image = cap.read()
@@ -77,15 +75,19 @@ True
 ```
 
 ### 3.1.2. Modifying video stream properties ###
-You can modify a camera's framerate, exposure, or binsize using the stream's 'set' method. In this example the exposure is changed from the default value (1500 us) to a new target value. Supported capture properties are stored in the `llpyspin.constants` module. You can query the value of a capture property with the 'get' method.
+Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, respectively, the VideoStream class uses Python properties to get and set properties of video acquisition.
 
 ``` python
->>> from llpyspin import constants as c
->>> cap.get(c.CAP_PROP_EXPOSURE)
-1500
->>> cap.set(c.CAP_PROP_EXPOSURE,3000) # this restarts the child process
->>> cap.get(c.CAP_PROP_EXPOSURE)
-3000
+>>> cap.framerate
+60
+>>> cap.framerate = 100
+>>> cap.framerate = 121 # some of the properties are constrained
+WARNING : The requested framerate of 121 fps falls outside the range of permitted values (1 - 120). Defaulting to 60 fps.
+>>> for attr in ['_framerate','_exposure','_binsize']:
+        print(property.strip('_') + f' : {self.__getattribute__(attr)}')
+framerate : 60
+exposure : 1500
+binsize : 2
 ```
 
 ## 3.2. Cameras ##
@@ -93,9 +95,8 @@ You can modify a camera's framerate, exposure, or binsize using the stream's 'se
 A primary camera generates a digital signal which dictates when secondary cameras acquire images. This allows for synchronous acquisition between multiple cameras.
 
 ```Python
->>> from llpyspin.capture import PrimaryCamera
 >>> device = str(12345678) # primary camera serial number
->>> cam1 = PrimaryCamera(device)
+>>> cam1 = llpyspin.PrimaryCamera(device)
 >>> cam1.primed # check that the camera is primed
 True
 >>> cam1.prime() # you only need to prime the camera once
@@ -110,46 +111,21 @@ False
 True
 ```
 
-### 3.2.2. Modifying camera properties ###
-Unlike the `llpyspin.capture.VideoStream` class which uses a class method to change acquisition properties, the `llpyspin.capture.PrimaryCamera` class uses class properties to modify properties of the video acquisition. Valid properties are 'framerate', 'exposure', 'binsize', and 'buffermode' (buffermode refers to the stream buffer handling mode).
-
-```Python
->>> cam1.framerate
-120
->>> cam1.framerate = 60 # this calls the private class method _setProperty
-WARNING : Failed to set framerate to 60 because acquisition is ongoing. # properties can't be set after the camera is primed
->>> cam1.stop()
->>> cam1.framerate = 60
->>> cam1.framerate
-60
->>> for attr in ['framerate','exposure','binsize','buffermode','foo']:
-        print(hasattr(cam,attr))
-True
-True
-True
-True
-False
-```
-
-### 3.2.3. Adding one or more secondary cameras ###
+### 3.2.2. Adding one or more secondary cameras ###
 A secondary camera's acquisition is coupled to the primary camera's acquisition.
 
 ```python
->>> from llpyspin.capture import SecondaryCamera
 >>> device2 = str(87654321)
->>> cam2 = SecondaryCamera(device2)
+>>> cam2 = llpyspin.SecondaryCamera(device2)
 >>> cam2.primed
 True
 >>> cam2.trigger() # the SecondaryCamera class has no trigger method
 AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 ```
 
-## 3.3. Systems ##
-TODO : Document this.
-
 # 4. Contributors #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
 
 # 5. TODO list #
-- Move from using queues to implement the camera trigger to using a multiprocessing Event object.
-- Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.
+- [] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
+- [x] Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.

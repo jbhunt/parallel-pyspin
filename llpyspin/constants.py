@@ -1,51 +1,48 @@
-# imports
-import os
-import yaml
 
-# this is the relative path to the package
-PACKAGE_PATH = os.path.dirname(__file__)
-CONFIG_FILE  = os.path.join(PACKAGE_PATH,'config.yaml')
-with open(CONFIG_FILE) as stream:
-    CONFIG_DATA = yaml.full_load(stream)
+# coded values
 
-# primary and secondary camera serial numbers and nicknames
-PRIMARY_SERIALNO    = str(CONFIG_DATA['cameras']['primary']['serialno'])
-PRIMARY_NICKNAME    = str(CONFIG_DATA['cameras']['primary']['nickname'])
-SECONDARY_SERIALNOS = list(map(str,CONFIG_DATA['cameras']['secondary']['serialno']))
-SECONDARY_NICKNAMES = list(map(str,CONFIG_DATA['cameras']['secondary']['nickname']))
+# outcomes
+ABORTED    = -1
+FAILURE    =  0
+SUCCESS    =  1
 
-# image size and shape
-IMAGE_WIDTH  = CONFIG_DATA['cameras']['primary']['resolution'][0]
-IMAGE_HEIGHT = CONFIG_DATA['cameras']['primary']['resolution'][1]
-IMAGE_SIZE   = IMAGE_WIDTH * IMAGE_HEIGHT
-IMAGE_SHAPE  = (IMAGE_HEIGHT,IMAGE_WIDTH) # convenient for shaping numpy arrays
+# commands
+INITIALIZE =  2
+SET        =  3
+START      =  4
+STOP       =  5
+RELEASE    =  6
 
-# basic capture properties
-CAP_PROP_FPS      = 'framerate'
-CAP_PROP_BINSIZE  = 'binsize'
-CAP_PROP_EXPOSURE = 'exposure'
-CAP_PROP_WIDTH    = 'width'
-CAP_PROP_HEIGHT   = 'height'
-CAP_PROP_OFFSET   = 'offset'
+# acquisition properties
 
-# default values for the basic capture properties
-CAP_PROP_FPS_DEFAULT      = 60
-CAP_PROP_BINSIZE_DEFAULT  = 2
-CAP_PROP_EXPOSURE_DEFAULT = 1500
-CAP_PROP_WIDTH_DEFAULT    = IMAGE_WIDTH
-CAP_PROP_HEIGHT_DEFAULT   = IMAGE_HEIGHT
-CAP_PROP_OFFSET_DEFAULT   = (0,0)
+# framerate
+FRAMERATE_ID            = 7
+FRAMERATE_MAXIMUM_VALUE = 120
+FRAMERATE_MINIMUM_VALUE = 1
+FRAMERATE_DEFAULT_VALUE = 60
 
-# buffer handling mode property and valid modes
-CAP_PROP_BUFFER_HANDLING_MODE           = 'buffermode'
-CAP_PROP_BUFFER_HANDLING_MODE_DEFAULT   = 'MostRecentFirst'
-CAP_PROP_BUFFER_HANDLING_MODE_STREAMING = 'NewestOnly'
-CAP_PROP_BUFFER_HANDLING_MODE_RECORDING = 'MostRecentFirst'
+# exposure
+EXOPOSURE_ID           = 8
+EXPOSURE_MAXIMUM_VALUE = 10000
+EXPOSURE_MINIMUM_VALUE = 100
+EXPOSURE_DEFAULT_VALUE = 1500
 
-#
-SUPPORTED_CAP_PROPS = (
-    CAP_PROP_FPS,
-    CAP_PROP_BINSIZE,
-    CAP_PROP_EXPOSURE,
-    CAP_PROP_BUFFER_HANDLING_MODE
-    )
+# binize
+BINSIZE_ID               = 9
+BINSIZE_PERMITTED_VALUES = [1,2,4]
+BINSIZE_DEFAULT_VALUE    = 2
+
+# stream buffer handling mode
+BUFFER_MODE_ID               = 10
+BUFFER_MODE_PERMITTED_VALUES = ['NewestOnly','NewestFirst','MostRecentFirst']
+BUFFER_MODE_DEFAULT_VALUE    = 'NewestOnly'
+
+# acquisition mode
+ACQUISITION_MODE_ID               = 11
+ACQUISITION_MODE_PERMITTED_VALUES = ['Continuous']
+ACQUITISION_MODE_DEFAULT_VALUE    = 'Continuous'
+
+# pixel format
+PIXEL_FORMAT_ID               = 12
+PIXEL_FORMAT_PERMITTED_VALUES = ['Mono8']
+PIXEL_FORMAT_DEFAULT_VALUE    = 'Mono8'

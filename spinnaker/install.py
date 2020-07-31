@@ -5,6 +5,8 @@ import subprocess
 # working directory
 cwd = os.path.dirname(os.path.realpath(__file__))
 
+# TODO - check for the right files and directories here
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--increase-memory-limit",help="increase USB-FS memory limit",action="store_true",default=False)
 parser.add_argument("--memory-limit",help="ubfs memory limit to set",default=1200)

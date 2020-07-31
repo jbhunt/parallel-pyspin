@@ -1,17 +1,20 @@
-# imports
+from llpyspin import constants
+
+import queue
 import logging
 import numpy as np
-from queue import Empty
-from multiprocessing import TimeoutError
-
-# relative imports
-import llpyspin.constants as c
-import llpyspin.processes as p
+import multiprocessing as mp
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
-class ChildProcessWrapper():
+# try to import the PySpin package
+try:
+    import PySpin
+except ModuleNotFoundError:
+    logging.error('PySpin import failed.')
+
+class NoCamerasFoundError(Exception):
     """
     """
 
@@ -19,36 +22,162 @@ class ChildProcessWrapper():
         """
         """
 
-        self._child      = None
-        self._framerate  = c.CAP_PROP_FPS_DEFAULT
-        self._binsize    = c.CAP_PROP_BINSIZE_DEFAULT
-        self._exposure   = c.CAP_PROP_EXPOSURE_DEFAULT
-        self._buffermode = c.CAP_PROP_BUFFER_HANDLING_MODE_STREAMING
+        super().__init__('No supported cameras were detected.')
 
         return
 
-    def _initializeChild(self, childClass):
+class VideoCaptureBase():
+    """
+    The base class for all video capture subclasses
+
+    keywords
+    --------
+    device : int or str
+        the camera's index or serial number
+
+    private methods
+    ---------------
+    _run
+        target function of the child process
+    _initializeChild
+        creates and starts the child process
+    _destroyChild
+        cleans up and joins the child process
+    _setAllProperties
+        invokes the setter for each property
+
+    special methods - see the note underneath the special methods section
+    ---------------
+    _initialize
+    _set
+    _release
+
+    properties
+    ----------
+    framerate
+    exposure
+    binsize
+    bufferMode
+    acquisitionMode
+    pixelFormat
+    """
+
+    def __init__(self, device):
         """
-        initialize (or re-initialize) the child process
         """
 
-        # destroy the child process if one already exists
+        self.device = device
+        self.child  = None
+
+        # private attributes
+        self._started         = mp.Value('i',0) # this flag controls the main loop in the run method
+        self._acquiring       = mp.Value('i',0) # this flag controls the acquisition loop in the _start method
+        self._iq              = mp.Queue()      # input queue
+        self._oq              = mp.Queue()      # output queue
+
+        # continuous acquisition properties
+        self._framerate       = constants.FRAMERATE_DEFAULT_VALUE
+        self._exposure        = constants.EXPOSURE_DEFAULT_VALUE
+        self._binsize         = constants.BINSIZE_DEFAULT_VALUE
+
+        # categorical acquisition properties
+        self._bufferMode      = constants.BUFFER_MODE_DEFAULT_VALUE
+        self._acquisitionMode = constants.ACQUITISION_MODE_DEFAULT_VALUE
+        self._pixelFormat     = constants.ACQUITISION_MODE_DEFAULT_VALUE
+
+        return
+
+    ### private methods - no touchy me ###
+
+    def _run(self):
+        """
+        target function for the child process
+
+        notes
+        -----
+        Do not make logging calls (e.g., 'logging.info(<some informative message>)')
+        within this method. Writing to stdout is not a process-safe operation.
+        """
+
+        # set the started flag to 1
+        self.started = 1
+
+        # create instances of the system and cameras
+        SYSTEM  = PySpin.System.GetInstance()
+        CAMERAS = SYSTEM.GetCameras()
+
+        # assert at least one camera
+        if len(CAMERAS) == 0:
+            raise NoCamerasFoundError()
+
+        # instantiate the camera
         try:
-            assert self._child is None
+            if type(self.device) == str:
+                camera = CAMERAS.GetBySerial(self.device)
+            if type(self.device) == int:
+                camera = CAMERAS.GetByIndex(self.device)
+            if type(self.device) not in [str,int]:
+                raise TypeError(f"The 'device' argument must be a string or integer but is of type {type(self.device)}.")
 
+        except PySpin.SpinnakerException:
+            logging.error('Unable to identify the requested camera.')
+            return
+
+        # main loop
+        while self.started:
+
+            # listen for commands
+            try:
+                command = self._iq.get(block=False)
+
+            except queue.Empty:
+                continue
+
+            # call the appropriate special method
+
+            if command == constants.INITIALIZE:
+                result = self._initialize(camera)
+
+            if command == constants.SET:
+                result = self._set(camera)
+
+            if command == constants.START:
+                result = self._start(camera)
+
+            if command == constants.STOP:
+                result = self._stop(camera)
+
+            if command == constants.RELEASE:
+                result = self._release(camera)
+
+            # send the result
+            self._oq.put(result)
+
+            continue
+
+        # clean up
+        try:
+            del camera
+        except NameError:
+            pass
+        CAMERAS.Clear()
+        SYSTEM.ReleaseInstance()
+
+        return
+
+    def _intitializeChild(self):
+        """
+        intitialize the child process
+        """
+
+        try:
+            assert self.child is None
         except AssertionError:
+            logging.warning("A child process already exists. To create a new instance call the '_destroyChild' method first.")
+            return
 
-            # log this event
-            logging.info('Restarting the child process.')
-
-            # destroy the child
-            self._destroyChild()
-
-        # (re-)instantiate the child process
-        self._child = childClass(self.device)
-
-        # start the child process
-        self._child.start()
+        self.child = mp.Process(target=self._run,args=())
+        self.child.start()
 
         return
 
@@ -57,284 +186,311 @@ class ChildProcessWrapper():
         destroy the child process
         """
 
-        # empty out the input and output queues - if the queues aren't empty the process can hang
-        while self._child.iq.qsize() != 0:
-            result = self._child.iq.get()
-
-        while self._child.oq.qsize() != 0:
-            result = self._child.oq.get()
-
-        # break out of the main loop
-        self._child.started.value = 0
-
-        # try to join the child process with the parent process
         try:
-            self._child.join(5) # 5 second timeout
-        except TimeoutError:
+            assert self.child is not None
+        except AssertionError:
+            logging.warning("The child process has not been instantiated. Call the '_initializeChild' method.")
+            return
+
+        # empty out the queues - if the are not empty it can cause the call to the join method to  hang
+        logging.info('Emptying input and output queues.')
+        while not self._iq.empty():
+            item = self._iq.get()
+            logging.info(f"'{item}' removed from the input queue")
+        while not self._oq.empty():
+            item = self._oq.get()
+            logging.info(f"'{item}' removed from the output queue")
+
+        # break out of the main loop in the child process
+        try:
+            assert self.started == 0
+        except AssertionErrort:
+            logging.info('Exiting from the child process.')
+            self.started = 0
+
+        # join the child process
+        try:
+            self.child.join(3) # 3" timeout
+        except mp.TimeoutError:
             logging.warning('The child process is deadlocked. Terminating.')
-            self._child.terminate()
-            self._child.join()
+            self.child.terminate()
+            self.child.join()
 
-        # delete the process instance
-        self._child = None
+        # delete the reference to the child process
+        self.child = None
 
         return
 
-    def _setProperty(self, property, value):
+    def _setAllProperties(self):
         """
-        set the value of a valid acquisition property
-
-        returns
-        -------
-        result : bool
-            True if successful in setting new value of property else False
+        set all properties to their current values
         """
 
-        result = False
+        # continuous properties
+        self.framerate = self._framerate
+        self.exposure  = self._exposure
+        self.binsize   = self._binsize
 
-        # assert that acquisition is not ongoing
+        # categorical properties
+        self.bufferMode      = self._bufferMode
+        self.acquisitionMode = self._acquisitionMode
+        self.pixelFormat     = self._pixelFormat
+
+        return
+
+    ### special methods ###
+
+    # NOTE : Objects shared between the parent and child process must be
+    #        process-safe. For this reason the camera object cannot be stored as
+    #        a class attribute but must instead be created within the scope of
+    #        the target function. In an effort to make the code more readable
+    #        I created these special methods which are called from within the
+    #        target function of the child process and passed the camera object
+    #        as a keyword argument.
+
+    def _initialize(self, camera):
+        """
+        initialize the camera
+        """
+
         try:
-            assert self._child.acquiring.value == 0
+            if not camera.IsInitialized():
+                camera.Init()
+            result = constants.SUCCESS
 
-        except AssertionError:
-            logging.warning(f'Failed to set {property} to {value} because video acquisition is ongoing.')
-            return result
-
-        # check that the requested property is valid
-        try:
-            assert property in c.SUPPORTED_CAP_PROPS
-
-        except AssertionError:
-            logging.warning(f'Failed to set {property} to {value} because {property} is not a valid property.')
-            return result
-
-        # communicate with the child process
-        self._child.iq.put('set')
-        self._child.iq.put(property)
-        self._child.iq.put(value)
-
-        logging.info(f'Setting {property} to {value}.')
-
-        result = self._child.oq.get()
-
-        if not result:
-            logging.warning(f'Failed to set {property} to {value}.')
+        except PySpin.SpinnakerException:
+            result = constants.FAILURE
 
         return result
 
-    def _resetAllProperties(self):
+    def _set(self, camera):
         """
-        set all the capture properties to their current values
-        """
-
-        properties = [
-            c.CAP_PROP_FPS,
-            c.CAP_PROP_BINSIZE,
-            c.CAP_PROP_EXPOSURE,
-            c.CAP_PROP_BUFFER_HANDLING_MODE
-            ]
-
-        values = [
-            self._framerate,
-            self._binsize,
-            self._exposure,
-            self._buffermode
-            ]
-
-        for property,value in zip(properties,values):
-            result = self._setProperty(property,value)
-
-        return
-
-class VideoStream(ChildProcessWrapper):
-    """
-    OpenCV-like video stream for a single BlackflyS camera
-
-    notes
-    -----
-    This object operates like OpenCV's VideoCapture class
-    """
-
-    def __init__(self, device=0):
-        """
-        keywords
-        --------
-        device : int
-            device index which specifies the camera
+        set the value of an acquisition property
         """
 
-        super().__init__()
+        # retreive the property ID and target value
+        property = self._iq.get()
+        value    = self._iq.get()
 
-        #
-        self.device = device
-
-        # start acquisition
-        self.open()
-
-        return
-
-    def open(self):
-        """
-        open the stream
-        """
-
-        # assert that the stream is closed
         try:
-            assert self.isOpened() is False
-        except AssertionError:
-            logging.info('Video stream is already open.')
-            return
 
-        # initialize the child process
-        self._initializeChild(childClass=p.VideoStreamProcess)
+            # make sure the camera is initialized - necessary for setting properties
+            if not camera.IsInitialized():
+                camera.Init()
 
-        # initialize the camera
-        self._child.iq.put('initialize')
-        result = self._child.oq.get()
-        if not result:
-            logging.error('Camera initialization failed.')
-            return
+            # TODO - Check if the camera is streaming (maybe stop and restart it?)
 
-        # set all the capture properties
-        self._resetAllProperties()
+            # framerate
+            if property == constants.FRAMERATE_ID:
+                camera.AcquisitionFrameRateEnable.SetValue(True)
+                camera.AcquisitionFrameRate.SetValue(value)
 
-        # start the video acquisition
-        self._child.iq.put('acquire')
+            # exposure
+            if property == constants.EXPOSURE_ID:
+                camera.AcquisitionFrameRateEnable.SetValue(False)
+                camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+                camera.ExposureTime.SetValue(value)
 
-        return
+            # binsize
+            if property == constants.BINSIZE_ID:
+                camera.BinningHorizontal.SetValue(self.value)
+                camera.BinningVertical.SetValue(self.value)
 
-    def isOpened(self):
-        """
-        returns
-        -------
-        result : bool
-            True if streaming else False
-        """
+            # stream buffer handling mode
+            if property == constants.BUFFER_MODE_ID:
+                tlstreamNodemap = camera.GetTLStreamNodeMap()
+                handlingMode = PySpin.CEnumerationPtr(tlstreamNodemap.GetNode('StreamBufferHandlingMode'))
+                handlingModeEntry = handlingMode.GetEntryByName(self.value)
+                handlingMode.SetIntValue(handlingModeEntry.GetValue())
 
-        result = True if self._child is not None and self._child.acquiring.value == 1 else False
+            # acquisition mode
+            if property == constants.ACQUISITION_MODE_ID:
+                nodemap = camera.GetNodeMap()
+                nodeAcquisitionMode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
+                acquisitionModeEntry = nodeAcquisitionMode.GetEntryByName(self.value)
+                nodeAcquisitionMode.SetIntValue(acquisitionModeEntry.GetValue())
+
+            # pixel format
+            if property == constants.PIXEL_FORMAT_ID:
+                nodemap = camera.GetNodeMap()
+                nodePixelFormat = PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat'))
+                pixelFormatEntry = PySpin.CEnumEntryPtr(nodePixelFormat.GetEntryByName(self.value))
+                nodePixelFormat.SetIntValue(pixelFormatEntry.GetValue())
+
+            result = constants.SUCCESS
+
+        except PySpin.SpinnakerException:
+            result = cosntants.FAILURE
 
         return result
 
-    def read(self):
-        """
-        grab the most recently acquired image
-        """
+    # NOTE : These '_start' and '_stop' special methods are place-holders. Each
+    #        subclass will define its own '_start' and '_stop' special methods.
 
-        result = True
+    def _start(self, camera):
+        return constants.ABORTED
+
+    def _stop(self, camera):
+        return constants.ABORTED
+
+    def _release(self, camera):
+        """
+        release the camera
+        """
 
         try:
 
-            # the lock blocks if a new image is being acquired / stored in the image attribute
-            with self._child.image.get_lock():
-                image = np.array(self._child.image[:],dtype=np.uint8).reshape(c.IMAGE_SHAPE)
+            # double-check that acquisition is stopped
+            if camera.IsStreaming:
+                camera.EndAcquisition()
+
+            # de-initialize the camera
+            camera.DeInit()
+
+            result = constants.SUCCESS
+
+        except PySpin.SpinnakerException:
+            result = constants.FAILURE
+
+        return result
+
+    ### properties ###
+
+    # started flag
+    @property
+    def started(self): return self._started.value
+
+    @started.setter
+    def started(self, value): self._started.value = value
+
+    # acquiring flag
+    @property
+    def acquiring(self): return self._acquiring.value
+
+    @acquiring.setter
+    def acquiring(self, value): self._acquiring.value = value
+
+    # framerate property
+    @property
+    def framerate(self): return self._framerate
+
+    @framerate.setter
+    def framerate(self, value):
+        """
+        """
+
+        try:
+            assert value <= constants.FRAMERATE_MAXIMUM_VALUE
+            assert value >= constatns.FRAMERATE_MINIMUM_VALUE
+            self._framerate = value
 
         except:
-            image = None
-            result = False
-
-        return (result,image)
-
-    def release(self):
-        """
-        release the video stream
-        """
-
-        try:
-            assert self.isOpened() is True
-
-        except AssertionError:
-            logging.info('Video stream is already stopped.')
-            return
-
-        logging.info('Releaseing video stream.')
-
-        # break out of the acquisition loop
-        self._child.acquiring.value = 0
-
-        # retreive the result (sent after exiting the acquisition loop)
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Video acquisition failed.')
-
-        # stop acquisition
-        self._child.iq.put('deacquire')
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Video de-acquisition failed.')
-
-        # de-init the camera
-        self._child.iq.put('deinitialize')
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Camera de-initialization failed.')
-
-        # destroy the child process
-        self._destroyChild()
-
-        return
-
-    def set(self, property, value):
-        """
-        set the value of a valid acquisition property
-        """
-
-        # check that the requested property is valid
-        try:
-            assert property in c.SUPPORTED_CAP_PROPS
-
-        except AssertionError:
-            logging.warning(f'{property} is not a supported property.')
-            return
+            message = (
+                f'The requested framerate of {value} fps falls outside the range '
+                f'of permitted values ({constants.FRAMERATE_MINIMUM_VALUE} - '
+                f'{constants.FRAMERATE_MAXIMUM_VALUE} fps). Defaulting to '
+                f'{constants.FRAMERATE_DEFAULT_VALUE} fps.'
+                )
+            logging.warning(message)
+            self._framerate = constants.FRAMERATE_DEFAULT_VALUE
 
         #
-        if self.isOpened():
-            logging.info('Restarting video stream.')
-            self.release()
-
-        # update the value of the class attribute
-        self.__setattr__(f'_{property}',value)
-
-        # (re-)open the stream
-        self.open()
+        self._iq.put(constants.SET)
+        self._iq.put(constants.FRAMERATE_ID) # tell the child what property is being set
+        self._iq.put(self._framerate)
 
         return
 
-    def get(self, property):
-        """
-        return the value of a valid capture property
-        """
+    # exposure
+    @property
+    def exposure(self): return self._exposure
 
-        try:
-            assert hasattr(self,f'_{property}')
-        except AssertionError:
-            logging.warning(f'{property} is not a supported property')
-
-        value = self.__getattribute__(f'_{property}')
-
-        return value
-
-class BaseCamera(ChildProcessWrapper):
-    """
-    """
-
-    def __init__(self, serialno, nickname=None):
+    @exposure.setter
+    def exposure(self, value):
         """
         """
 
         try:
-            assert type(serialno) == str
-        except AssertionError:
-            logging.error(f'The serial number must be a string.')
-            return
+            assert value <= constants.EXPOSURE_MAXIMUM_VALUE
+            assert value >= constatns.EXPOSURE_MINIMUM_VALUE
+            self._exposure = value
 
-        super().__init__()
+        except:
+            message = (
+                f'The requested exposure of {value} us falls outside the range '
+                f'of permitted values ({constants.EXPOSURE_MINIMUM_VALUE} - '
+                f'{constants.EXPOSURE_MAXIMUM_VALUE} us). Defaulting to '
+                f'{constants.EXPOSURE_DEFAULT_VALUE} us.'
+                )
+            logging.warning(message)
+            self._exposure = constants.EXPOSURE_DEFAULT_VALUE
 
         #
-        self.device  = serialno # camera serial number
-        self._nickname = nickname # camera nickname
-        self._primed   = False
+        self._iq.put(constants.SET)
+        self._iq.put(constants.EXPOSURE_ID) # tell the child what property is being set
+        self._iq.put(self._exposure)
 
         return
+
+    # binsize
+    @property
+    def binsize(self): return self._binsize
+
+    @binsize.setter
+    def binsize(self, value):
+        """
+        """
+
+        try:
+            assert binsize in constants.BINSIZE_PERMITTED_VALUES
+            self._binsize = value
+
+        except AssertionError:
+            msg = (
+                f'The requested binsize value of {value} pixels must belong to '
+                f'this set of permitted values : '
+                f'{constants.BINSIZE_PERMITTED_VALUES}. Defaulting to '
+                f'{constants.BINSIZE_DEFAULT_VALUE} pixels.'
+                )
+            logging.warning(msg)
+            self._binsize = constants.BINSIZE_DEFAULT_VALUE
+
+        #
+        self._iq.put(constants.SET)
+        self._iq.put(constants.BINSIZE_ID)
+        self._iq.put(self._binsize)
+
+        return
+
+    # stream buffer handling mode
+    @property
+    def bufferMode(self): return self._bufferMode
+
+    @bufferMode.setter
+    def bufferMode(self, value):
+        pass
+
+    # acquisition mode
+    @property
+    def acquisitionMode(self): return self._acquisitionMode
+
+    @acquisitionMode.setter
+    def acquisitionMode(self, value):
+        pass
+
+    # pixel format
+    @property
+    def pixelFormat(self): return self._pixelFormat
+
+    @pixelFormat.setter
+    def pixelFormat(self, value):
+        pass
+
+class VideoCameraMixin():
+    """
+    a mixin class which defines the methods and properties shared
+    between primary and secondary cameras
+    """
 
     def release(self):
         """
@@ -342,68 +498,20 @@ class BaseCamera(ChildProcessWrapper):
         """
 
         # stop acquisition if acquiring
-        if self.primed is True:
+        if self.primed:
             logging.info('Stopping video acquisition.')
             self.stop()
 
-        # deconfigure camera
-        self._child.iq.put('deconfigure')
-        result = self._child.oq.get()
+        #
+        self._iq.put(constants.RELEASE)
+        result = self._oq.get()
         if not result:
-            logging.warning('Camera deconfiguration failed.')
-
-        # de-init the camera
-        self._child.iq.put('deinitialize')
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Camera deinitialization failed.')
+            logging.warning('Camera de-initialization failed.')
 
         # stop and join the child process
         self._destroyChild()
 
         return
-
-    ### properties ###
-
-    # framerate
-    @property
-    def framerate(self):
-        return self._framerate
-    @framerate.setter
-    def framerate(self, value):
-        result = self._setProperty(c.CAP_PROP_FPS,value)
-        if result:
-            self._framerate = value
-
-    # exposure
-    @property
-    def exposure(self):
-        return self._exposure
-    @exposure.setter
-    def exposure(self, value):
-        result = self._setProperty(c.CAP_PROP_EXPOSURE,value)
-        if result:
-            self._exposure = value
-
-    # binsize
-    @property
-    def binsize(self):
-        return self._binsize
-    @binsize.setter
-    def binsize(self, value):
-        result = self._setProperty(c.CAP_PROP_BINSIZE,value)
-        if result:
-            self._binsize = value
-
-    # stream buffer handling mode
-    @property
-    def buffermode(self):
-        return self._buffermode
-    @buffermode.setter
-    def buffermode(self, value):
-        result = self._setProperty(c.CAP_PROP_BUFFER_HANDLING_MODE,value)
-        if result:
-            self._buffermode = value
 
     # nickname
     @property
@@ -418,208 +526,3 @@ class BaseCamera(ChildProcessWrapper):
     def primed(self):
         self._primed = True if self._child is not None and self._child.acquiring.value == 1 else False
         return self._primed
-    @primed.setter
-    def primed(self, value):
-        logging.warning("The 'primed' attribute cannot be set manually.")
-
-class PrimaryCamera(BaseCamera):
-    """
-    """
-
-    def __init__(self, serialno, nickname=None):
-        """
-        """
-
-        super().__init__(serialno, nickname)
-
-        # camera trigger state
-        self._triggered = False
-
-        # prime the camera
-        self.prime()
-
-        return
-
-    def prime(self):
-        """
-        prime the camera for video acquisition
-        """
-
-        # check that the camera isn't acquiring
-        try:
-            assert self.primed is False
-        except AssertionError:
-            logging.info('Video acquisition is already started.')
-            return
-
-        # intitialize (or re-initialize) the child process
-        self._initializeChild(childClass=p.PrimaryCameraProcess)
-
-        # initialize the camera
-        self._child.iq.put('initialize')
-        result = self._child.oq.get()
-        if not result:
-            logging.error('Camera initialization failed.')
-            return
-
-        # set the acquisition properties
-        self._resetAllProperties()
-
-        # configure the camera
-        self._child.iq.put('configure')
-        result = self._child.oq.get()
-        if not result:
-            logging.error('Camera configuration failed.')
-            return
-
-        # set the acquiring flag to 1
-        self._child.acquiring.value = 1
-
-        # send the acquisition command
-        self._child.iq.put('acquire')
-
-        # set the triggered flag to False
-        self._triggered = False
-
-        return
-
-    def trigger(self):
-        """
-        trigger the master camera
-        """
-
-        # start acquisition if necessary
-        if not self.primed:
-            logging.warning('Video acquisition is not started. Call the prime method.')
-            return
-
-        # set the triggered flag to True
-        self._triggered = True
-
-        # send the trigger state to the child process
-        self._child.iq.put(self._triggered)
-
-        return
-
-    def stop(self):
-        """
-        stop video acquisition
-        """
-
-        # check that the camera is acquiring
-        try:
-            assert self.primed is True
-        except AssertionError:
-            logging.info('Video acquisition is already stopped.')
-            return
-
-        # release the trigger if the camera is still waiting for it
-        if not self._triggered:
-            self._child.iq.put(self._triggered)
-
-        # break out of the acquisition loop
-        self._child.acquiring.value = 0
-
-        # retreive the result (sent after exiting the acquisition loop)
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Video acquisition failed.')
-
-        # stop acquisition
-        self._child.iq.put('deacquire')
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Failed to stop video acquisition.')
-
-        return
-
-    # camera trigger state
-    @property
-    def triggered(self):
-        return self._triggered
-    @triggered.setter
-    def triggered(self, value):
-        logging.warning("The 'trigger' attribute can't be set manually")
-
-class SecondaryCamera(BaseCamera):
-    """
-    """
-
-    def __init__(self, serialno, nickname=None):
-        """
-        """
-
-        super().__init__(serialno, nickname)
-
-        self.prime()
-
-        return
-
-    def prime(self):
-        """
-        prime the camera for video acquisition
-        """
-
-        # check that the camera isn't acquiring
-        try:
-            assert self.primed is False
-        except AssertionError:
-            logging.info('Video acquisition is already started.')
-            return
-
-        # initialize the child process
-        self._initializeChild(childClass=p.SecondaryCameraProcess)
-
-        # initialize the camera
-        self._child.iq.put('initialize')
-        result = self._child.oq.get()
-        if not result:
-            logging.error('Camera initialization failed.')
-            return
-
-        # set the acquisition properties
-        self._resetAllProperties()
-
-        # configure the camera
-        self._child.iq.put('configure')
-        result = self._child.oq.get()
-        if not result:
-            logging.error('Camera configuration failed.')
-            return
-
-        # set the acquiring flag to 1
-        self._child.acquiring.value = 1
-
-        self._child.iq.put('acquire')
-
-        return
-
-    def stop(self):
-        """
-        stop video acquisition
-        """
-
-        # check that the camera is acquiring
-        try:
-            assert self.primed is True
-        except AssertionError:
-            logging.info('Video acquisition is already stopped.')
-            return
-
-        # break out of the acquisition loop
-        self._child.acquiring.value = 0
-
-        # this get call shouldn't ever hang now but you never know
-        result = self._child.oq.get()
-        if not result:
-            logging.warning('Video acquisition failed.')
-
-        # stop acquisition
-        self._child.iq.put('deacquire')
-        result = self._child.oq.get()
-
-        # check result
-        if not result:
-            logging.warning('Failed to stop video acquisition.')
-
-        return

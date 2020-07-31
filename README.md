@@ -136,3 +136,4 @@ Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the Unive
 # Task list #
 - [x] Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.
 - [ ] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
+- [ ] Create a test script

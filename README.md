@@ -48,7 +48,7 @@ You can also clone this repository and run the setup script:
 1. `git clone https://github.com/jbhunt/parallel-pyspin.git`
 2. `python -m setup.py install`
 
-Be warned, the github repository is one development version ahead of the PYPI package. It's untested and not entirely bug-free. Use it at your own risk.
+Be warned, the github repository is one development version ahead of the package you get from PyPI. It's untested and not entirely bug-free. Use it at your own risk.
 
 ## Installing Spinnaker and PySpin ##
 The only other software this package depends on is the Spinnaker SDK and its Python wrapper - PySpin.
@@ -71,9 +71,9 @@ This script takes care of steps 1-3 of the procedures for installation outlined 
 This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
 
 ```python
->>> import llpyspin
+>>> from llpyspin import streaming
 >>> device = 0 # device index
->>> cap = llpyspin.VideoStream(device)
+>>> cap = streaming.VideoStream(device)
 >>> cap.isOpened()
 True
 >>> result,image = cap.read()
@@ -93,11 +93,6 @@ Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to 
 >>> cap.framerate = 100
 >>> cap.framerate = 121 # some of the properties are constrained
 WARNING : The requested framerate of 121 fps falls outside the range of permitted values (1 - 120). Defaulting to 60 fps.
->>> for attr in ['_framerate','_exposure','_binsize']:
-        print(property.strip('_') + f' : {self.__getattribute__(attr)}')
-framerate : 60
-exposure : 1500
-binsize : 2
 ```
 
 ## Cameras ##
@@ -105,8 +100,9 @@ binsize : 2
 A primary camera generates a digital signal which dictates when secondary cameras acquire images. This allows for synchronous acquisition between multiple cameras.
 
 ```Python
+>>> from llpyspin import primary
 >>> device = str(12345678) # primary camera serial number
->>> cam1 = llpyspin.PrimaryCamera(device)
+>>> cam1 = primary.PrimaryCamera(device)
 >>> cam1.primed # check that the camera is primed
 True
 >>> cam1.prime() # you only need to prime the camera once
@@ -125,8 +121,9 @@ True
 A secondary camera's acquisition is coupled to the primary camera's acquisition.
 
 ```python
+>>> from llpyspin import secondary
 >>> device2 = str(87654321)
->>> cam2 = llpyspin.SecondaryCamera(device2)
+>>> cam2 = secondary.SecondaryCamera(device2)
 >>> cam2.primed
 True
 >>> cam2.trigger() # the SecondaryCamera class has no trigger method
@@ -137,5 +134,5 @@ AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
 
 # Task list #
-- [ ] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
 - [x] Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.
+- [ ] Move from using queues to implement the camera trigger to using a multiprocessing Event object.

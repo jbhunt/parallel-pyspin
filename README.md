@@ -8,6 +8,8 @@ For questions or general correspondence please send an email to hunt.brian.joshu
 2. [Installation](https://github.com/jbhunt/parallel-pyspin/#2-installation)
    1. [Installing parallel-pyspin](https://github.com/jbhunt/parallel-pyspin/#21-installing-parallel-pyspin)
    2. [Installing PySpin](https://github.com/jbhunt/parallel-pyspin/#22-installing-pyspin)
+      1. [Method 1](https://github.com/jbhunt/parallel-pyspin/#221-method-1)
+      2. [Method 2](https://github.com/jbhunt/parallel-pyspin/#222-method-2)
 3. [Usage](https://github.com/jbhunt/parallel-pyspin/#3-usage)
    1. [Streaming](https://github.com/jbhunt/parallel-pyspin/#31-streaming)
       1. [Creating a video stream](https://github.com/jbhunt/parallel-pyspin/#311-creating-a-video-stream)
@@ -21,8 +23,8 @@ For questions or general correspondence please send an email to hunt.brian.joshu
 # 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
-1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package
-2. True synchronous video acquisition for multiple cameras
+1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) module.
+2. Semi-automatic configuration for synchronous video acquisition with multiple cameras
 
 There are several other packages that have similar capabilities and motives, but it doesn't seem like these projects are actively maintained. Feel free to check them out and see if they are better suited for your needs:
 
@@ -46,12 +48,20 @@ You can also clone this repository and run the setup script:
 1. `git clone https://github.com/jbhunt/parallel-pyspin.git`
 2. `python -m setup.py install`
 
+Be warned, the github repo is one development version ahead of the PYPI package. It's untested and not entirely bug-free. Use it at your own risk.
+
 ## 2.2. Installing PySpin ##
-The only other software this package depends on is the Spinnaker SDK including PySpin. You can install it yourself - take a look [here](https://www.flir.com/products/spinnaker-sdk). Alternatively, if you are using Ubuntu 18.04 and Python 3 you can run [this](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) script and it should take care of the installation for you. There's a couple options you can specify via the command line.
+The only other software this package depends on is the Spinnaker SDK and the PySpin package.
 
-Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). This can cause issues if you are using a camera with high resolution or at a high framerate or when using multiple cameras. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify how much to increase the memory limit with the `memory-limit` argument. Make sure to run the script with root privilege:
+### Method 1 ###
+You can install these dependencies yourself. Take a look [here](https://www.flir.com/products/spinnaker-sdk). If you are using an operating system other than Ubuntu 18.04 or a Python version less than 3.6, this is the recommended procedure.
 
-`sudo python -m ./install.py --increase-memory-limit --memory-limit 1200`
+### Method 2 ###
+Alternatively, if you are using Ubuntu 18.04 and Python 3.6+ you can run [this script](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) and it should take care of the installation for you.
+
+1. There's a folder which contains some libraries, a list of dependencies and the PySpin Wheel [here](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker). To download this file you can either clone the whole github repository: `git clone https://github.com/jbhunt/parallel-pyspin/` or you can use subversion to download just this folder and its contents: `svn checkout https://github.com/jbhunt/parallel-pyspin/trunk/spinnaker`. To install subversion if you don't already have it installed: `sudo apt-get install subversion`.
+
+2. Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). This can cause issues if you are using a camera with high resolution or at a high framerate or when using multiple cameras. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify the new buffer size with the `--memory-limit` argument. Make sure to run the script with root privileges: `sudo python -m ./install.py --increase-memory-limit --memory-limit 1200`.
 
 This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README) as well as the installation of the PySpin Wheel. There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
 
@@ -75,7 +85,7 @@ True
 ```
 
 ### 3.1.2. Modifying video stream properties ###
-Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, respectively, the VideoStream class uses Python properties to get and set properties of video acquisition.
+Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, respectively, the VideoStream class uses Python properties to get and set properties of video acquisition. This interface applies to the camera classes as well.
 
 ``` python
 >>> cap.framerate

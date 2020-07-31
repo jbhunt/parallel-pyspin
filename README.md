@@ -7,7 +7,7 @@ For questions or general correspondence please send an email to hunt.brian.joshu
    2. [Synchronous video acquisition](https://github.com/jbhunt/parallel-pyspin/#synchronous-video-acquisition)
 2. [Installation](https://github.com/jbhunt/parallel-pyspin/#installation)
    1. [Installing parallel-pyspin](https://github.com/jbhunt/parallel-pyspin/#installing-parallel-pyspin)
-   2. [Installing PySpin](https://github.com/jbhunt/parallel-pyspin/#installing-pyspin)
+   2. [Installing PySpin](https://github.com/jbhunt/parallel-pyspin/#installing-spinnaker-and-pyspin)
       1. [Method 1](https://github.com/jbhunt/parallel-pyspin/#method-1)
       2. [Method 2](https://github.com/jbhunt/parallel-pyspin/#method-2)
 3. [Usage](https://github.com/jbhunt/parallel-pyspin/#usage)

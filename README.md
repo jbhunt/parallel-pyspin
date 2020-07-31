@@ -50,8 +50,8 @@ You can also clone this repository and run the setup script:
 
 Be warned, the github repository is one development version ahead of the PYPI package. It's untested and not entirely bug-free. Use it at your own risk.
 
-## Installing PySpin ##
-The only other software this package depends on is the Spinnaker SDK and the PySpin package.
+## Installing Spinnaker and PySpin ##
+The only other software this package depends on is the Spinnaker SDK and its Python wrapper - PySpin.
 
 ### Method 1 ###
 You can install these dependencies yourself. Take a look [here](https://www.flir.com/products/spinnaker-sdk). If you are using an operating system other than Ubuntu 18.04 or a Python version less than 3.6, this is the recommended procedure.
@@ -59,7 +59,7 @@ You can install these dependencies yourself. Take a look [here](https://www.flir
 ### Method 2 ###
 Alternatively, if you are using Ubuntu 18.04 and Python 3.6+ you can run [this script](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) and it should take care of the installation for you.
 
-1. There's a folder which contains some libraries, a list of dependencies and the PySpin Wheel [here](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker). To download this file you can either clone the whole github repository: `git clone https://github.com/jbhunt/parallel-pyspin/` or you can use subversion to download just this folder and its contents: `svn checkout https://github.com/jbhunt/parallel-pyspin/trunk/spinnaker`. To install subversion if you don't already have it installed: `sudo apt-get install subversion`.
+1. There's a folder which contains some libraries, a list of dependencies, and the PySpin Wheel [here](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker). To download this file you can either clone the whole github repository: `git clone https://github.com/jbhunt/parallel-pyspin/` or you can use subversion to download just this folder and its contents: `svn checkout https://github.com/jbhunt/parallel-pyspin/trunk/spinnaker`. To install subversion if you don't already have it installed: `sudo apt-get install subversion`.
 
 2. Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). This can cause issues if you are using a camera with high resolution or at a high framerate or when using multiple cameras. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify the new buffer size with the `--memory-limit` argument. Make sure to run the script with root privileges: `sudo python -m ./install.py --increase-memory-limit --memory-limit 1200`.
 

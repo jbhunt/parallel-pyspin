@@ -24,7 +24,7 @@ For questions or general correspondence please send an email to hunt.brian.joshu
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
 1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package.
-2. Encapsulated camera configuration for synchronous video acquisition with multiple cameras
+2. Encapsulation of the procedure for configuring multiple cameras for synchronous video acquisition.
 
 There are several other packages that have similar capabilities and motives. Feel free to check them out and see if they are better suited for your needs:
 
@@ -118,7 +118,7 @@ True
 ```
 
 ### Adding one or more secondary cameras ###
-A secondary camera's acquisition is coupled to the primary camera's acquisition.
+A secondary camera's acquisition is coupled to the primary camera's acquisition via a hardware trigger.
 
 ```python
 >>> from llpyspin import secondary

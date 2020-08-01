@@ -57,18 +57,18 @@ The only other software this package depends on is the Spinnaker SDK and its Pyt
 You can install these dependencies yourself. Take a look [here](https://www.flir.com/products/spinnaker-sdk). If you are using an operating system other than Ubuntu 18.04 or a Python version less than 3.6, this is the recommended procedure.
 
 ### Method 2 ###
-Alternatively, if you are using Ubuntu 18.04 and Python 3.6+ you can run [this script](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker/install.py) and it should take care of the installation for you.
+Alternatively, if you are using Ubuntu 18.04 and Python 3.6+ I created a script that takes care of the installation for you. Follow these steps:
 
-1. There's a folder which contains some libraries, a list of dependencies, and the PySpin Wheel [here](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker). To download this file you can either clone the whole github repository: `git clone https://github.com/jbhunt/parallel-pyspin/` or you can use subversion to download just this folder and its contents: `svn checkout https://github.com/jbhunt/parallel-pyspin/trunk/spinnaker`. To install subversion if you don't already have it installed: `sudo apt-get install subversion`.
+1. There's a folder which contains some libraries, a list of dependencies, the PySpin Wheel, and the installation script [here](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker). To download this folder you can either clone the whole github repository: `git clone https://github.com/jbhunt/parallel-pyspin/` or you can use subversion to download just this folder and its contents: `svn checkout https://github.com/jbhunt/parallel-pyspin/trunk/spinnaker`. If you don't already have subversion installed you can install it like this: `sudo apt-get install subversion`.
 
-2. Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). This can cause issues if you are using a camera with high resolution or at a high framerate or when using multiple cameras. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify the new buffer size with the `--memory-limit` argument. Make sure to run the script with root privileges: `sudo python -m ./install.py --increase-memory-limit --memory-limit 1200`.
+2. Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). This can cause issues if you are using a camera with high resolution or at a high framerate or when using multiple cameras. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify the new buffer size with the `--memory-limit` argument. Make sure to run the script with root privileges: `sudo python -m ./spinnaker/install.py --increase-memory-limit --memory-limit 1200`.
 
 This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README) as well as the installation of the PySpin Wheel. There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
 
 # Usage #
 ## Streaming ##
 ### Creating a video stream ###
-This example demonstrates how to use the `llpyspin.capture.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
+This example demonstrates how to use the `llpyspin.streaming.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
 
 ```python
 >>> from llpyspin import streaming

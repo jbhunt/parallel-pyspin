@@ -14,8 +14,30 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
+def specialmethod(method):
+    """
+    decorator for the special methods which makes exceptions for cases of PySpin.SpinnakerException
+    """
+
+    def invoke(camera):
+        """
+        tries to call the special method
+        """
+
+        try:
+            method(camera)
+            result = constants.SUCCESS
+
+        except PySpin.SpinnakerException:
+            result = constants.FAILURE
+
+        return result
+
+    return invoke
+
 class NoCamerasFoundError(Exception):
     """
+    raised if the length of the cameras list is less than 1
     """
 
     def __init__(self):
@@ -26,10 +48,8 @@ class NoCamerasFoundError(Exception):
 
         return
 
-class VideoCaptureBase():
+class CameraBase():
     """
-    The base class for all video capture subclasses
-
     keywords
     --------
     device : int or str
@@ -39,7 +59,7 @@ class VideoCaptureBase():
     ---------------
     _run
         target function of the child process
-    _initializeChild
+    _createChild
         creates and starts the child process
     _destroyChild
         cleans up and joins the child process
@@ -54,6 +74,8 @@ class VideoCaptureBase():
 
     properties
     ----------
+    started
+    acquiring
     framerate
     exposure
     binsize
@@ -87,7 +109,7 @@ class VideoCaptureBase():
 
         return
 
-    ### private methods - no touchy me ###
+    ### private methods ###
 
     def _run(self):
         """
@@ -99,8 +121,8 @@ class VideoCaptureBase():
         within this method. Writing to stdout is not a process-safe operation.
         """
 
-        # set the started flag to 1
-        self.started = 1
+        #
+        self.started = True
 
         # create instances of the system and cameras
         SYSTEM  = PySpin.System.GetInstance()
@@ -112,15 +134,20 @@ class VideoCaptureBase():
 
         # instantiate the camera
         try:
+
             if type(self.device) == str:
                 camera = CAMERAS.GetBySerial(self.device)
+
             if type(self.device) == int:
                 camera = CAMERAS.GetByIndex(self.device)
+
             if type(self.device) not in [str,int]:
-                raise TypeError(f"The 'device' argument must be a string or integer but is of type {type(self.device)}.")
+                CAMERAS.Clear()
+                SYSTEM.ReleaseInstance()
+                raise TypeError(f"The 'device' argument must be a string or integer but is of type '{type(self.device)}''.")
 
         except PySpin.SpinnakerException:
-            logging.error('Unable to identify the requested camera.')
+            logging.error('Unable to create an instance of the camera.')
             return
 
         # main loop
@@ -165,9 +192,9 @@ class VideoCaptureBase():
 
         return
 
-    def _intitializeChild(self):
+    def _createChild(self):
         """
-        intitialize the child process
+        create the child process
         """
 
         try:
@@ -175,6 +202,8 @@ class VideoCaptureBase():
         except AssertionError:
             logging.warning("A child process already exists. To create a new instance call the '_destroyChild' method first.")
             return
+
+        logging.info('Creating the child process.')
 
         self.child = mp.Process(target=self._run,args=())
         self.child.start()
@@ -189,24 +218,27 @@ class VideoCaptureBase():
         try:
             assert self.child is not None
         except AssertionError:
-            logging.warning("The child process has not been instantiated. Call the '_initializeChild' method.")
+            logging.warning("No child process exists. Create the child process with the '_createChild' method.")
             return
 
+        logging.info('Destroying the child process.')
+
         # empty out the queues - if the are not empty it can cause the call to the join method to  hang
-        logging.info('Emptying input and output queues.')
-        while not self._iq.empty():
-            item = self._iq.get()
-            logging.info(f"'{item}' removed from the input queue")
-        while not self._oq.empty():
-            item = self._oq.get()
-            logging.info(f"'{item}' removed from the output queue")
+        if self._iq.qsize() != 0 or self._oq.qsize() != 0:
+            logging.info('Emptying input and output queues.')
+            while not self._iq.empty():
+                item = self._iq.get()
+                logging.info(f"'{item}' removed from the input queue")
+            while not self._oq.empty():
+                item = self._oq.get()
+                logging.info(f"'{item}' removed from the output queue")
 
         # break out of the main loop in the child process
         try:
-            assert self.started == 0
-        except AssertionErrort:
+            assert self.started is True
+        except AssertionError:
             logging.info('Exiting from the child process.')
-            self.started = 0
+            self.started = False
 
         # join the child process
         try:
@@ -246,23 +278,21 @@ class VideoCaptureBase():
     #        the target function. In an effort to make the code more readable
     #        I created these special methods which are called from within the
     #        target function of the child process and passed the camera object
-    #        as a keyword argument.
+    #        as an argument. The decorator takes each method, calls the method,
+    #        and returns the result of that call (True if successful else False).
 
+    @specialmethod
     def _initialize(self, camera):
         """
         initialize the camera
         """
 
-        try:
-            if not camera.IsInitialized():
-                camera.Init()
-            result = constants.SUCCESS
+        if not camera.IsInitialized():
+            camera.Init()
 
-        except PySpin.SpinnakerException:
-            result = constants.FAILURE
+        return
 
-        return result
-
+    @specialmethod
     def _set(self, camera):
         """
         set the value of an acquisition property
@@ -272,103 +302,83 @@ class VideoCaptureBase():
         property = self._iq.get()
         value    = self._iq.get()
 
-        try:
+        # make sure the camera is initialized - necessary for setting properties
+        if not camera.IsInitialized():
+            camera.Init()
 
-            # make sure the camera is initialized - necessary for setting properties
-            if not camera.IsInitialized():
-                camera.Init()
+        # TODO - Check if the camera is streaming (maybe stop and restart it?)
 
-            # TODO - Check if the camera is streaming (maybe stop and restart it?)
+        # framerate
+        if property == constants.FRAMERATE_ID:
+            camera.AcquisitionFrameRateEnable.SetValue(True)
+            camera.AcquisitionFrameRate.SetValue(value)
 
-            # framerate
-            if property == constants.FRAMERATE_ID:
-                camera.AcquisitionFrameRateEnable.SetValue(True)
-                camera.AcquisitionFrameRate.SetValue(value)
+        # exposure
+        if property == constants.EXPOSURE_ID:
+            camera.AcquisitionFrameRateEnable.SetValue(False)
+            camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+            camera.ExposureTime.SetValue(value)
 
-            # exposure
-            if property == constants.EXPOSURE_ID:
-                camera.AcquisitionFrameRateEnable.SetValue(False)
-                camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
-                camera.ExposureTime.SetValue(value)
+        # binsize
+        if property == constants.BINSIZE_ID:
+            camera.BinningHorizontal.SetValue(self.value)
+            camera.BinningVertical.SetValue(self.value)
 
-            # binsize
-            if property == constants.BINSIZE_ID:
-                camera.BinningHorizontal.SetValue(self.value)
-                camera.BinningVertical.SetValue(self.value)
+        # stream buffer handling mode
+        if property == constants.BUFFER_MODE_ID:
+            tlstreamNodemap = camera.GetTLStreamNodeMap()
+            handlingMode = PySpin.CEnumerationPtr(tlstreamNodemap.GetNode('StreamBufferHandlingMode'))
+            handlingModeEntry = handlingMode.GetEntryByName(self.value)
+            handlingMode.SetIntValue(handlingModeEntry.GetValue())
 
-            # stream buffer handling mode
-            if property == constants.BUFFER_MODE_ID:
-                tlstreamNodemap = camera.GetTLStreamNodeMap()
-                handlingMode = PySpin.CEnumerationPtr(tlstreamNodemap.GetNode('StreamBufferHandlingMode'))
-                handlingModeEntry = handlingMode.GetEntryByName(self.value)
-                handlingMode.SetIntValue(handlingModeEntry.GetValue())
+        # acquisition mode
+        if property == constants.ACQUISITION_MODE_ID:
+            nodemap = camera.GetNodeMap()
+            nodeAcquisitionMode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
+            acquisitionModeEntry = nodeAcquisitionMode.GetEntryByName(self.value)
+            nodeAcquisitionMode.SetIntValue(acquisitionModeEntry.GetValue())
 
-            # acquisition mode
-            if property == constants.ACQUISITION_MODE_ID:
-                nodemap = camera.GetNodeMap()
-                nodeAcquisitionMode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
-                acquisitionModeEntry = nodeAcquisitionMode.GetEntryByName(self.value)
-                nodeAcquisitionMode.SetIntValue(acquisitionModeEntry.GetValue())
+        # pixel format
+        if property == constants.PIXEL_FORMAT_ID:
+            nodemap = camera.GetNodeMap()
+            nodePixelFormat = PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat'))
+            pixelFormatEntry = PySpin.CEnumEntryPtr(nodePixelFormat.GetEntryByName(self.value))
+            nodePixelFormat.SetIntValue(pixelFormatEntry.GetValue())
 
-            # pixel format
-            if property == constants.PIXEL_FORMAT_ID:
-                nodemap = camera.GetNodeMap()
-                nodePixelFormat = PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat'))
-                pixelFormatEntry = PySpin.CEnumEntryPtr(nodePixelFormat.GetEntryByName(self.value))
-                nodePixelFormat.SetIntValue(pixelFormatEntry.GetValue())
+        return
 
-            result = constants.SUCCESS
-
-        except PySpin.SpinnakerException:
-            result = cosntants.FAILURE
-
-        return result
-
-    # NOTE : These '_start' and '_stop' special methods are place-holders. Each
-    #        subclass will define its own '_start' and '_stop' special methods.
-
-    def _start(self, camera):
-        return constants.ABORTED
-
-    def _stop(self, camera):
-        return constants.ABORTED
-
+    @specialmethod
     def _release(self, camera):
         """
         release the camera
         """
 
-        try:
+        # double-check that acquisition is stopped
+        if camera.IsStreaming:
+            camera.EndAcquisition()
 
-            # double-check that acquisition is stopped
-            if camera.IsStreaming:
-                camera.EndAcquisition()
+        # de-initialize the camera
+        camera.DeInit()
 
-            # de-initialize the camera
-            camera.DeInit()
-
-            result = constants.SUCCESS
-
-        except PySpin.SpinnakerException:
-            result = constants.FAILURE
-
-        return result
+        return
 
     ### properties ###
 
     # started flag
     @property
-    def started(self): return self._started.value
+    def started(self): return True if self._started.value == 1 else False
 
     @started.setter
-    def started(self, value): self._started.value = value
+    def started(self, value):
+        self._started.value = 1 if value is True else False
 
     # acquiring flag
     @property
-    def acquiring(self): return self._acquiring.value
+    def acquiring(self): return True if self._acquiring.value == 1 else False
 
     @acquiring.setter
-    def acquiring(self, value): self._acquiring.value = value
+    def acquiring(self, value):
+        self._acquiring.value = 1 if value is True else False
 
     # framerate property
     @property
@@ -446,7 +456,7 @@ class VideoCaptureBase():
             self._binsize = value
 
         except AssertionError:
-            msg = (
+            message = (
                 f'The requested binsize value of {value} pixels must belong to '
                 f'this set of permitted values : '
                 f'{constants.BINSIZE_PERMITTED_VALUES}. Defaulting to '
@@ -468,7 +478,24 @@ class VideoCaptureBase():
 
     @bufferMode.setter
     def bufferMode(self, value):
-        pass
+        """
+        """
+
+        try:
+            assert value in constants.BUFFER_MODE_PERMITTED_VALUES
+        except AssertionError:
+            message = (
+                f'The requested stream buffer handling mode must belong to '
+                f'this set of permitted values : '
+                f'{constants.BUFFER_MODE_PERMITTED_VALUES}, but is "{value}".'
+                f'Defaulting to "{constants.BUFFER_MODE_DEFAULT_VALUE}".'
+                )
+            logging.warning(message)
+            self._bufferMode = constants.BUFFER_MODE_DEFAULT_VALUE
+
+        self._iq.put(constants.SET)
+        self._iq.put(constants.BUFFER_MODE_ID)
+        self._iq.put(self._bufferMode)
 
     # acquisition mode
     @property
@@ -476,7 +503,24 @@ class VideoCaptureBase():
 
     @acquisitionMode.setter
     def acquisitionMode(self, value):
-        pass
+        """
+        """
+
+        try:
+            assert value in constants.ACQUISITION_MODE_PERMITTED_VALUES
+        except AssertionError:
+            message = (
+                f'The requested acquisition mode must belong to '
+                f'this set of permitted values : '
+                f'{constants.ACQUISITION_MODE_PERMITTED_VALUES} but is "{value}".'
+                f'Defaulting to "{constants.ACQUISITION_MODE_DEFAULT_VALUE}".'
+                )
+            logging.warning(message)
+            self._acquisitionMode = constants.ACQUISITION_MODE_DEFAULT_VALUE
+
+        self._iq.put(constants.SET)
+        self._iq.put(constants.ACQUISITION_MODE_ID)
+        self._iq.put(self._acquisitionMode)
 
     # pixel format
     @property
@@ -484,45 +528,21 @@ class VideoCaptureBase():
 
     @pixelFormat.setter
     def pixelFormat(self, value):
-        pass
-
-class VideoCameraMixin():
-    """
-    a mixin class which defines the methods and properties shared
-    between primary and secondary cameras
-    """
-
-    def release(self):
         """
-        release the camera
         """
 
-        # stop acquisition if acquiring
-        if self.primed:
-            logging.info('Stopping video acquisition.')
-            self.stop()
+        try:
+            assert value in constants.PIXEL_FORMAT_PERMITTED_VALUES
+        except AssertionError:
+            message = (
+                f'The requested pixel format must belong to '
+                f'this set of permitted values : '
+                f'{constants.PIXEL_FORMAT_PERMITTED_VALUES} but is "{value}".'
+                f'Defaulting to "{constants.PIXEL_FORMAT_DEFAULT_VALUE}".'
+                )
+            logging.warning(message)
+            self._acquisitionMode = constants.ACQUISITION_MODE_DEFAULT_VALUE
 
-        #
-        self._iq.put(constants.RELEASE)
-        result = self._oq.get()
-        if not result:
-            logging.warning('Camera de-initialization failed.')
-
-        # stop and join the child process
-        self._destroyChild()
-
-        return
-
-    # nickname
-    @property
-    def nickname(self):
-        return self._nickname
-    @nickname.setter
-    def nickname(self, value):
-        self._nickname = value
-
-    # camera ready state
-    @property
-    def primed(self):
-        self._primed = True if self._child is not None and self._child.acquiring.value == 1 else False
-        return self._primed
+        self._iq.put(constants.SET)
+        self._iq.put(constants.PIXEL_FORMAT_ID)
+        self._iq.put(self._pixelFormat)

@@ -1,5 +1,6 @@
 from llpyspin import constants
-from llpyspin import capture
+from llpyspin.abstract import CameraBase
+from llpyspin.abstract import specialmethod
 
 import queue
 import logging
@@ -15,7 +16,7 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class SecondaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
+class SecondaryCamera(CameraBase):
     """
     """
 
@@ -36,76 +37,62 @@ class SecondaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
 
     ### special methods ###
 
+    @special method
     def _start(self, camera):
         """
         """
 
-        try:
+        # configure the hardware trigger
+        camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
+        camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
+        camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
+        camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-            # configure the hardware trigger
-            camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
-            camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
-            camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+        # begin acquisition
+        camera.BeginAcquisition()
 
-            # begin acquisition
-            camera.BeginAcquisition()
-
-            # main loop
-            while self.acquiring.value == 1:
+        # main loop
+        while self.acquiring:
 
 
-                ### NOTE ###
-                #
-                # There's a 3 second timeout for the call to GetNextImage to prevent
-                # the secondary camera from blocking when video acquisition is
-                # aborted before the primary camera is triggered (see below).
-                #
+            ### NOTE ###
+            #
+            # There's a 3 second timeout for the call to GetNextImage to prevent
+            # the secondary camera from blocking when video acquisition is
+            # aborted before the primary camera is triggered (see below).
+            #
 
-                try:
-                    image = camera.GetNextImage(3000) # timeout
-                except PySpin.SpinnakerException:
-                    continue
+            try:
+                image = camera.GetNextImage(3000) # timeout
+            except PySpin.SpinnakerException:
+                continue
 
-                #
-                if not image.IsIncomplete():
+            #
+            if not image.IsIncomplete():
 
-                    # convert the image
-                    frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+                # convert the image
+                frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
-                # release the image
-                image.Release()
+            # release the image
+            image.Release()
 
-            result = constants.SUCCESS
+        return
 
-        except PySpin.SpinnakerException:
-            result = constants.FAILURE
-
-        return result
-
+    @specialmethod
     def _stop(self, camera):
         """
         stop acquisition
         """
 
-        result = True
+        # stop acquisition
+        if camera.IsStreaming():
+            camera.EndAcquisition()
 
-        try:
+        # deconfigure the trigger
+        if camera.TriggerMode.GetValue() == PySpin.TriggerMode_On:
+            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
-            # stop acquisition
-            if camera.IsStreaming():
-                camera.EndAcquisition()
-
-            # deconfigure the trigger
-            if camera.TriggerMode.GetValue() == PySpin.TriggerMode_On:
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-
-            result = constants.SUCCESS
-
-        except:
-            result = constants.FAILURE
-
-        return result
+        return
 
     ### public methods ###
 
@@ -122,7 +109,7 @@ class SecondaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             return
 
         # intitialize the child process
-        self._initializeChild()
+        self._createChild()
 
         # attempt to initialize the camera
         attempt   = 0 # attempt counter
@@ -146,14 +133,14 @@ class SecondaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             if not result:
                 logging.warning(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
                 self._destroyChild()
-                self._initializeChild()
+                self._createChild()
                 continue
 
         # set the acquisition properties
         self._setAllProperties()
 
         # set the acquiring flag to 1
-        self._acquiring.value = 1
+        self.acquiring = True
 
         # send the acquisition command
         self._iq.put(constants.START)
@@ -173,7 +160,7 @@ class SecondaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             return
 
         # break out of the acquisition loop
-        self.acquiring = 0
+        self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
         result = self._oq.get()
@@ -187,3 +174,38 @@ class SecondaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             logging.warning('Video de-acquisition failed.')
 
         return
+
+    def release(self):
+        """
+        release the camera
+        """
+
+        # stop acquisition if acquiring
+        if self.primed:
+            logging.info('Stopping video acquisition.')
+            self.stop()
+
+        #
+        self._iq.put(constants.RELEASE)
+        result = self._oq.get()
+        if not result:
+            logging.warning('Camera de-initialization failed.')
+
+        # stop and join the child process
+        self._destroyChild()
+
+        return
+
+    # nickname
+    @property
+    def nickname(self):
+        return self._nickname
+    @nickname.setter
+    def nickname(self, value):
+        self._nickname = value
+
+    # camera ready state
+    @property
+    def primed(self):
+        self._primed = True if self.child is not None and self.acquiring == 1 else False
+        return self._primed

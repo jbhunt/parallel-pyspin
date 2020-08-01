@@ -1,5 +1,6 @@
 from llpyspin import constants
-from llpyspin import capture
+from llpyspin.abstract import CameraBase
+from llpyspin.abstract import specialmethod
 
 import queue
 import logging
@@ -15,7 +16,7 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class PrimaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
+class PrimaryCamera(CameraBase):
     """
     """
 
@@ -37,97 +38,82 @@ class PrimaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
 
     ### special methods ###
 
+    @specialmethod
     def _start(self, camera):
         """
         """
+        # configure the trigger
 
-        try:
+        # create a counter that tracks the onset sensor exposure
+        camera.CounterSelector.SetValue(PySpin.CounterSelector_Counter0)
+        camera.CounterEventSource.SetValue(PySpin.CounterEventSource_ExposureStart)
+        camera.CounterTriggerSource.SetValue(PySpin.CounterTriggerSource_ExposureStart)
+        camera.CounterTriggerActivation.SetValue(PySpin.CounterTriggerActivation_RisingEdge)
 
-            # configure the trigger
+        # create a digital signal whose PWD is determined by the counter
+        camera.LineSelector.SetValue(PySpin.LineSelector_Line2)
+        camera.V3_3Enable.SetValue(True)
+        camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
+        camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
 
-            # create a counter that tracks the onset sensor exposure
-            camera.CounterSelector.SetValue(PySpin.CounterSelector_Counter0)
-            camera.CounterEventSource.SetValue(PySpin.CounterEventSource_ExposureStart)
-            camera.CounterTriggerSource.SetValue(PySpin.CounterTriggerSource_ExposureStart)
-            camera.CounterTriggerActivation.SetValue(PySpin.CounterTriggerActivation_RisingEdge)
+        # tell the camera to wait for a software trigger
+        # NOTE : In reality the camera is triggered by un-setting the trigger mode (see below).
+        camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+        camera.TriggerSource.SetValue(PySpin.TriggerSource_Software)
+        camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_Off)
+        camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-            # create a digital signal whose PWD is determined by the counter
-            camera.LineSelector.SetValue(PySpin.LineSelector_Line2)
-            camera.V3_3Enable.SetValue(True)
-            camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-            camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
+        # begin acquisition
+        camera.BeginAcquisition()
 
-            # tell the camera to wait for a software trigger
-            # NOTE : In reality the camera is triggered by un-setting the trigger mode (see below).
+        # activate the counter - shouldn't have to do this again but you never know
+        # camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
+        # camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
+
+        # block while waiting for the trigger command
+        triggered = self.iq.get()
+
+        # un-set the trigger mode (in effect trigger the camera)
+        if triggered:
             camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-            camera.TriggerSource.SetValue(PySpin.TriggerSource_Software)
-            camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_Off)
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-            # begin acquisition
-            camera.BeginAcquisition()
+        # abort acquisition
+        else:
+            return constants.SUCCESS
 
-            # activate the counter - shouldn't have to do this again but you never know
-            # camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-            # camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
+        # main loop
+        while self.acquiring:
 
-            # block while waiting for the trigger command
-            triggered = self.iq.get()
+            image = camera.GetNextImage()
 
-            # un-set the trigger mode (in effect trigger the camera)
-            if triggered:
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+            #
+            if not image.IsIncomplete():
 
-            # abort acquisition
-            else:
-                return constants.SUCCESS
+                # convert the image
+                frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
-            # main loop
-            while self.acquiring.value == 1:
+            # release the image
+            image.Release()
 
-                image = camera.GetNextImage()
+        return
 
-                #
-                if not image.IsIncomplete():
-
-                    # convert the image
-                    frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
-
-                # release the image
-                image.Release()
-
-            result = constants.SUCCESS
-
-        except PySpin.SpinnakerException:
-            result = False
-
-        return result
-
+    @specialmethod
     def _stop(self, camera):
         """
         stop acquisition
         """
 
-        result = True
+        # stop acquisition
+        if camera.IsStreaming():
+            camera.EndAcquisition()
 
-        try:
+        # deconfigure the trigger
+        camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+        camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
+        camera.LineSource.SetValue(PySpin.LineSource_FrameTriggerWait)
+        camera.LineInverter.SetValue(True)
 
-            # stop acquisition
-            if camera.IsStreaming():
-                camera.EndAcquisition()
-
-            # deconfigure the trigger
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
-            camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-            camera.LineSource.SetValue(PySpin.LineSource_FrameTriggerWait)
-            camera.LineInverter.SetValue(True)
-
-            result = constants.SUCCESS
-
-        except SpinnakerException:
-            result = constants.FAILURE
-
-        return result
+        return
 
     ### public methods ###
 
@@ -144,7 +130,7 @@ class PrimaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             return
 
         # intitialize the child process
-        self._initializeChild()
+        self._createChild()
 
         # attempt to initialize the camera
         attempt   = 0 # attempt counter
@@ -168,14 +154,14 @@ class PrimaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             if not result:
                 logging.warning(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
                 self._destroyChild()
-                self._initializeChild()
+                self._createChild()
                 continue
 
         # set the acquisition properties
         self._setAllProperties()
 
         # set the acquiring flag to 1
-        self._acquiring.value = 1
+        self.acquiring = True
 
         # send the acquisition command
         self._iq.put(constants.START)
@@ -220,7 +206,7 @@ class PrimaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
             self._iq.put(self.triggered)
 
         # break out of the acquisition loop
-        self.acquiring = 0
+        self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
         result = self._oq.get()
@@ -235,7 +221,42 @@ class PrimaryCamera(capture.VideoCaptureBase,capture.VideoCameraMixin):
 
         return
 
+    def release(self):
+        """
+        release the camera
+        """
+
+        # stop acquisition if acquiring
+        if self.primed:
+            logging.info('Stopping video acquisition.')
+            self.stop()
+
+        #
+        self._iq.put(constants.RELEASE)
+        result = self._oq.get()
+        if not result:
+            logging.warning('Camera de-initialization failed.')
+
+        # stop and join the child process
+        self._destroyChild()
+
+        return
+
     # camera trigger state
     @property
     def triggered(self):
         return self._triggered
+
+    # nickname
+    @property
+    def nickname(self):
+        return self._nickname
+    @nickname.setter
+    def nickname(self, value):
+        self._nickname = value
+
+    # camera ready state
+    @property
+    def primed(self):
+        self._primed = True if self.child is not None and self.acquiring == 1 else False
+        return self._primed

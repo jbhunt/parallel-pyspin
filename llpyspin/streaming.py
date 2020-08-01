@@ -1,5 +1,6 @@
 from llpyspin import constants
-from llpyspin import capture
+from llpyspin.abstract import CameraBase
+from llpyspin.abstract import specialmethod
 
 import queue
 import logging
@@ -15,7 +16,7 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class VideoStream(capture.VideoCaptureBase):
+class VideoStream(CameraBase):
     """
     """
 
@@ -36,71 +37,57 @@ class VideoStream(capture.VideoCaptureBase):
 
     ### special methods ###
 
+    @specialmethod
     def _start(self, camera):
         """
         start acquisition
         """
 
-        try:
+        camera.BeginAcquisition()
+
+        # grab the properties of the image using a sample image
+        sample = camera.GetNextImage()
+
+        # retreive the image shape
+        width  = sample.GetWidth()
+        height = sample.GetHeight()
+        depth  = sample.GetNumChannels() # not in use now because all images are Mono8
+
+        # store the image shape - I'm not sure if this needs to be proces-safe but it couldn't hurt
+        self.shape = mp.Array('i',3)
+        self.shape[:] = np.array([height,width,depth])
+
+        # create an array object for the image
+        self.image = mp.Array('i',width * height)
+
+        # main loop
+        while self.acquiring.value:
+
+            image = camera.GetNextImage()
+
             #
-            camera.BeginAcquisition()
+            if not image.IsIncomplete():
 
-            # grab the properties of the image using a sample image
-            sample = camera.GetNextImage()
+                # convert the image
+                frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
-            # retreive the image shape
-            width  = sample.GetWidth()
-            height = sample.GetHeight()
-            depth  = sample.GetNumChannels() # not in use now because all images are Mono8
+                # store the image (critical - use lock)
+                with self.image.get_lock():
+                    self.image[:] = frame.GetNDArray().flatten()
 
-            # store the image shape - I'm not sure if this needs to be proces-safe but it couldn't hurt
-            self.shape = mp.Array('i',3)
-            self.shape[:] = np.array([height,width,depth])
-
-            # create an array object for the image
-            self.image = mp.Array('i',width * height)
-
-            # main loop
-            while self.acquiring.value:
-
-                image = camera.GetNextImage()
-
-                #
-                if not image.IsIncomplete():
-
-                    # convert the image
-                    frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
-
-                    # store the image (critical - use lock)
-                    with self.image.get_lock():
-                        self.image[:] = frame.GetNDArray().flatten()
-
-                image.Release()
-
-            result = constants.SUCCESS
-
-        except PySpin.SpinnakerException:
-            result = constants.FAILURE
+            image.Release()
 
         return
 
+    @specialmethod
     def _stop(self, camera):
         """
         stop acquisition
         """
 
-        try:
-
-            # stop acquisition
-            if camera.IsStreaming():
-                camera.EndAcquisition()
-
-            result = constants.SUCCESS
-
-        except PySpin.SpinnakerException:
-            result = constants.FAILURE
-
-        return
+        # stop acquisition
+        if camera.IsStreaming():
+            camera.EndAcquisition()
 
     ### public methods ###
 
@@ -108,7 +95,7 @@ class VideoStream(capture.VideoCaptureBase):
         """
         """
 
-        result = True if self.child is not None and self.acquiring else False
+        result = True if self.child is not None and self.acquiring is True else False
 
         return result
 
@@ -127,7 +114,7 @@ class VideoStream(capture.VideoCaptureBase):
         logging.info('Opening the video stream.')
 
         # initialize the child process
-        self._initializeChild()
+        self._createChild()
 
         # initialize the camera
         attempt   = 0 # attempt counter
@@ -151,14 +138,14 @@ class VideoStream(capture.VideoCaptureBase):
             if not result:
                 logging.warning(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
                 self._destroyChild()
-                self._initializeChild()
+                self._createChild()
                 continue
 
         # set all properties to their default values
         self._setAllProperties()
 
         # set the acquiring flag
-        self.acquiring = 1
+        self.acquiring = True
 
         # start the video acquisition
         self._child.iq.put(constants.START)
@@ -178,7 +165,7 @@ class VideoStream(capture.VideoCaptureBase):
         logging.info('Releasing the video stream.')
 
         # break out of the acquisition loop
-        self.acquiring = 0
+        self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
         result = self._.oq.get()
@@ -186,14 +173,14 @@ class VideoStream(capture.VideoCaptureBase):
             logging.warning('Video acquisition failed.')
 
         # stop acquisition
-        self._.iq.put(constants.STOP)
-        result = self._.oq.get()
+        self._iq.put(constants.STOP)
+        result = self._oq.get()
         if not result:
             logging.warning('Video de-acquisition failed.')
 
         # release camera
-        self._.iq.put(constants.RELEASE)
-        result = self._.oq.get()
+        self._iq.put(constants.RELEASE)
+        result = self._oq.get()
         if not result:
             logging.warning('Camera de-initialization failed.')
 

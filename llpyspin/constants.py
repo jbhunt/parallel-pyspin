@@ -34,7 +34,7 @@ BINSIZE_DEFAULT_VALUE    = 2
 
 # stream buffer handling mode
 BUFFER_MODE_ID               = 10
-BUFFER_MODE_PERMITTED_VALUES = ['NewestOnly','NewestFirst','MostRecentFirst']
+BUFFER_MODE_PERMITTED_VALUES = ['NewestOnly','NewestFirst','OldestFirst']
 BUFFER_MODE_DEFAULT_VALUE    = 'NewestOnly'
 
 # acquisition mode

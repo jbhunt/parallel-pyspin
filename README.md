@@ -23,18 +23,18 @@ For questions or general correspondence please send an email to hunt.brian.joshu
 # 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
 
-1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) module.
-2. Semi-automatic configuration for synchronous video acquisition with multiple cameras
+1. Parallel operation of cameras via the [multiprocessing](https://docs.python.org/2/library/multiprocessing.html) package.
+2. Encapsulated camera configuration for synchronous video acquisition with multiple cameras
 
-There are several other packages that have similar capabilities and motives, but it doesn't seem like these projects are actively maintained. Feel free to check them out and see if they are better suited for your needs:
+There are several other packages that have similar capabilities and motives. Feel free to check them out and see if they are better suited for your needs:
 
-1. [multi_pyspin](https://github.com/justinblaber/multi_pyspin)
-2. [simple_pyspin](https://github.com/klecknerlab/simple_pyspin)
+1. [simple_pyspin](https://github.com/klecknerlab/simple_pyspin)
+2. [multi_pyspin](https://github.com/justinblaber/multi_pyspin)
 
 Finally, this package was developed using two [Blackfly S USB3](https://www.flir.com/products/blackfly-s-usb3/) cameras, but in theory it should work with any USB3 or GigE camera (i.e., any camera supported by the Spinnaker SDK).
 
 ## Parallel camera operation ##
-TODO : Describe how multiprocessing is used to parallelize the camera operation
+Camera operation is parallelized with the multiprocessing package. Each camera runs on its own process which is dynamically spawned and joined with the main process as needed. The child processes make use of the PySpin package to interact with the camera, and they communicate with the main process via process-safe mechanisms like queues.
 
 ## Synchronous video acquisition ##
 TODO : Describe how the cameras are configured for simultaneous video acquisition
@@ -109,12 +109,12 @@ True
 INFO : Video acquisition is already started
 >>> cam1.trigger() # trigger camera
 >>> cam1.stop() # stop acquisition
->>> cam1.release() # release camera
 >>> cam1.primed
 False
 >>> cam1.prime() # you can re-prime the camera for subsequent recordings
 >>> cam1.primed
 True
+>>> cam1.release() # be sure to clean up when you're done
 ```
 
 ### Adding one or more secondary cameras ###

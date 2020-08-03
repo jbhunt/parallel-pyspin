@@ -1,6 +1,10 @@
+from llpyspin._construct import ChildProcessMixin
+from llpyspin._construct import SpinnakerMethodsMixin
+from llpyspin._construct import AcquisitionPropertiesMixin
+from llpyspin._construct import VideoCameraBase
+from llpyspin._construct import SpinnakerMethod
+
 from llpyspin import constants
-from llpyspin.abstract import CameraBase
-from llpyspin.abstract import specialmethod
 
 import queue
 import logging
@@ -16,8 +20,12 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class VideoStream(CameraBase):
+# list of mixins
+mixins = [ChildProcessMixin,SpinnakerMethodsMixin,AcquisitionPropertiesMixin]
+
+class VideoStream(VideoCameraBase,*mixins):
     """
+    a class for streaming video, i.e., where recording is not the target function
     """
 
     def __init__(self, device=0):
@@ -27,17 +35,16 @@ class VideoStream(CameraBase):
         super().__init__(device)
 
         # public attributes
-        self.image = None
-        self.shape = None
+        self._current   = np.zeros([1440,1080])
+        self._previous  = np.zeros([1440,1080])
+        self._retreived = mp.Array('i',1080 * 1440)
 
         # open the stream
         self.open()
 
         return
 
-    ### special methods ###
-
-    @specialmethod
+    @SpinnakerMethod
     def _start(self, camera):
         """
         start acquisition
@@ -45,23 +52,8 @@ class VideoStream(CameraBase):
 
         camera.BeginAcquisition()
 
-        # grab the properties of the image using a sample image
-        sample = camera.GetNextImage()
-
-        # retreive the image shape
-        width  = sample.GetWidth()
-        height = sample.GetHeight()
-        depth  = sample.GetNumChannels() # not in use now because all images are Mono8
-
-        # store the image shape - I'm not sure if this needs to be proces-safe but it couldn't hurt
-        self.shape = mp.Array('i',3)
-        self.shape[:] = np.array([height,width,depth])
-
-        # create an array object for the image
-        self.image = mp.Array('i',width * height)
-
         # main loop
-        while self.acquiring.value:
+        while self._acquiring.value:
 
             image = camera.GetNextImage()
 
@@ -72,22 +64,10 @@ class VideoStream(CameraBase):
                 frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
                 # store the image (critical - use lock)
-                with self.image.get_lock():
-                    self.image[:] = frame.GetNDArray().flatten()
-
-            image.Release()
+                with self._retreived.get_lock():
+                    self._retreived[:] = frame.GetNDArray().flatten()
 
         return
-
-    @specialmethod
-    def _stop(self, camera):
-        """
-        stop acquisition
-        """
-
-        # stop acquisition
-        if camera.IsStreaming():
-            camera.EndAcquisition()
 
     ### public methods ###
 
@@ -106,7 +86,7 @@ class VideoStream(CameraBase):
 
         # assert that the stream is closed
         try:
-            assert not self.isOpened()
+            assert self.isOpened() == False
         except AssertionError:
             logging.info('The video stream is already open.')
             return
@@ -114,12 +94,12 @@ class VideoStream(CameraBase):
         logging.info('Opening the video stream.')
 
         # initialize the child process
-        self._createChild()
+        self._create()
 
         # initialize the camera
         attempt   = 0 # attempt counter
         threshold = 5 # max number of attempts allowed
-        result    = constants.FAILURE # default result
+        result    = False # default result
 
         while not result:
 
@@ -127,28 +107,28 @@ class VideoStream(CameraBase):
             attempt += 1
             if attempt > threshold:
                 logging.error(f'Failed to initialize the camera with {attempt} attempts. Destroying child.')
-                self._destroyChild()
+                self._destroys()
                 return
 
             # attempt to initialize the camera
-            self._.iq.put(constants.INITIALIZE)
-            result = self._.oq.get()
+            self._iq.put(constants.INITIALIZE)
+            result = self._oq.get()
 
             # restart the child process
             if not result:
-                logging.warning(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
-                self._destroyChild()
-                self._createChild()
+                logging.debug(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
+                self._destroy()
+                self._create()
                 continue
 
         # set all properties to their default values
-        self._setAllProperties()
+        self._setall()
 
         # set the acquiring flag
         self.acquiring = True
 
         # start the video acquisition
-        self._child.iq.put(constants.START)
+        self._iq.put(constants.START)
 
         return
 
@@ -157,9 +137,9 @@ class VideoStream(CameraBase):
         """
 
         try:
-            assert self.isOpened()
+            assert self.isOpened() == True
         except AssertionError:
-            logging.info("The video stream is closed. Call the 'open' method")
+            logging.info("The video stream is closed,")
             return
 
         logging.info('Releasing the video stream.')
@@ -168,24 +148,24 @@ class VideoStream(CameraBase):
         self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
-        result = self._.oq.get()
+        result = self._oq.get()
         if not result:
-            logging.warning('Video acquisition failed.')
+            logging.debug('Video acquisition failed.')
 
         # stop acquisition
         self._iq.put(constants.STOP)
         result = self._oq.get()
         if not result:
-            logging.warning('Video de-acquisition failed.')
+            logging.debug('Video de-acquisition failed.')
 
         # release camera
         self._iq.put(constants.RELEASE)
         result = self._oq.get()
         if not result:
-            logging.warning('Camera de-initialization failed.')
+            logging.debug('Camera de-initialization failed.')
 
         # destroy the child process
-        self._destroyChild()
+        self._destroy()
 
         return
 
@@ -194,30 +174,24 @@ class VideoStream(CameraBase):
         get the most recently acquired image
         """
 
+        # check that the stream is open
+        if self.isOpened() == False:
+            logging.info('The stream is closed.')
+            return (None, False)
+
+        # the lock blocks if a new image is being written to the image attribute
+        with self._retreived.get_lock():
+
+            # transform the raw data into a correctly shaped numpy array
+            self._current = np.array(self._retreived[:],dtype=np.uint8).reshape((1080,1440))
+
         try:
-
-            # check that the stream is open
-            assert self.isOpened() is True
-
-            # retreive image shape - this will raise a TypeError if the shape attribute is undefined
-            (height, width, depth) = self.shape[:]
-
-            # the lock blocks if a new image is being written to the image attribute
-            with self.image.get_lock():
-
-                # transform the raw data into a correctly shaped numpy array
-                image = np.array(self.image[:],dtype=np.uint8).reshape((height,width))
-
-            result = True
+            assert np.array_equal(self._previous,self._current) == False
 
         except AssertionError:
-            logging.warning('The stream is closed.')
-            image  = None
-            result = False
+            logging.debug('The same image was retreived twice.')
+            return (True, self._current)
 
-        except TypeError:
-            logging.warning('The image shape is undefined.')
-            image = None
-            result = False
+        self._previous = self._current
 
-        return (result,image)
+        return (True,self._current)

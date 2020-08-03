@@ -41,14 +41,17 @@ TODO : Describe how the cameras are configured for simultaneous video acquisitio
 
 # Installation #
 ## Installing parallel-pyspin ##
-You can install most recent pre-release version (0.2.dev2) of this package via pip:
+You can install version 0.2.dev2 of this package via pip:
 1. `pip install parallel-pyspin==0.2.dev2`
 
-You can also clone this repository and run the setup script:
-1. `git clone https://github.com/jbhunt/parallel-pyspin.git`
-2. `python -m setup.py install`
+This version has been tested only very superficially. If you use it and find a bug feel free to open an issue.
 
-Be warned, the github repository is one development version ahead of the package you get from PyPI. It's untested and not entirely bug-free. Use it at your own risk.
+You can also install the most recent pre-release version (0.2.dev3) by cloining the repository and running the setup script:
+1. `git clone https://github.com/jbhunt/parallel-pyspin.git`
+2. `cd ./parallel-pyspin`
+3. `python -m setup.py install`
+
+Be warned, this version is completely untested and prone to bugs.
 
 ## Installing Spinnaker and PySpin ##
 The only other software this package depends on is the Spinnaker SDK and its Python wrapper - PySpin.

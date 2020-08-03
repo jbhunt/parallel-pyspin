@@ -41,7 +41,7 @@ TODO : Describe how the cameras are configured for simultaneous video acquisitio
 
 # Installation #
 ## Installing parallel-pyspin ##
-You can install version 0.2.dev2 of this package via pip. This version has only been tested superficially. If you use it and find a bug feel free to open an issue.
+You can install version 0.2.dev2 of this package via pip. This version has been tested, but only lightly. If you use it and find a bug feel free to open an issue.
 1. `pip install parallel-pyspin==0.2.dev2`
 
 You can also install the most recent pre-release version (0.2.dev3) by cloning the repository and running the setup script. Be warned, this version is completely untested and only video streaming is supported as of now.

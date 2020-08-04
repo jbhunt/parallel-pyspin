@@ -1,15 +1,13 @@
-from llpyspin._construct import ChildProcessMixin
-from llpyspin._construct import SpinnakerMethodsMixin
-from llpyspin._construct import AcquisitionPropertiesMixin
-from llpyspin._construct import VideoCameraBase
-from llpyspin._construct import SpinnakerMethod
-
-from llpyspin import constants
-
 import queue
 import logging
 import numpy as np
 import multiprocessing as mp
+
+# relative imports
+from ._processes  import CameraBase
+from ._spinnaker  import SpinnakerMixin, SpinnakerMethod
+from ._properties import PropertiesMixin
+from ._constants  import *
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -20,10 +18,7 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-# list of mixins
-mixins = [ChildProcessMixin,SpinnakerMethodsMixin,AcquisitionPropertiesMixin]
-
-class VideoStream(VideoCameraBase,*mixins):
+class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
     """
     a class for streaming video, i.e., where recording is not the target function
     """
@@ -38,9 +33,26 @@ class VideoStream(VideoCameraBase,*mixins):
         self._current   = np.zeros([1440,1080])
         self._previous  = np.zeros([1440,1080])
         self._retreived = mp.Array('i',1080 * 1440)
+        self._width     = 1440
+        self._height    = 1080
 
         # open the stream
         self.open()
+
+        return
+
+    @SpinnakerMethod
+    def _initialize(self, camera):
+        """
+        """
+
+        SpinnakerMixin._initialize(self, camera)
+
+        # set the stream buffer handling mode to "NewestOnly"
+        tlstreamNodemap = camera.GetTLStreamNodeMap()
+        handlingMode = PySpin.CEnumerationPtr(tlstreamNodemap.GetNode('StreamBufferHandlingMode'))
+        handlingModeEntry = handlingMode.GetEntryByName('NewestOnly')
+        handlingMode.SetIntValue(handlingModeEntry.GetValue())
 
         return
 
@@ -50,7 +62,7 @@ class VideoStream(VideoCameraBase,*mixins):
         start acquisition
         """
 
-        camera.BeginAcquisition()
+        SpinnakerMixin._start(self, camera)
 
         # main loop
         while self._acquiring.value:
@@ -65,7 +77,11 @@ class VideoStream(VideoCameraBase,*mixins):
 
                 # store the image (critical - use lock)
                 with self._retreived.get_lock():
-                    self._retreived[:] = frame.GetNDArray().flatten()
+                    try:
+                        self._retreived[:] = frame.GetNDArray().flatten()
+                    except:
+                        logging.debug(f'Shared array is of size {len(self._retreived[:])} but image is of size {frame.GetNDArray().size}.')
+                        return
 
         return
 
@@ -107,11 +123,11 @@ class VideoStream(VideoCameraBase,*mixins):
             attempt += 1
             if attempt > threshold:
                 logging.error(f'Failed to initialize the camera with {attempt} attempts. Destroying child.')
-                self._destroys()
+                self._destroy()
                 return
 
             # attempt to initialize the camera
-            self._iq.put(constants.INITIALIZE)
+            self._iq.put(INITIALIZE)
             result = self._oq.get()
 
             # restart the child process
@@ -128,7 +144,7 @@ class VideoStream(VideoCameraBase,*mixins):
         self.acquiring = True
 
         # start the video acquisition
-        self._iq.put(constants.START)
+        self._iq.put(START)
 
         return
 
@@ -153,13 +169,13 @@ class VideoStream(VideoCameraBase,*mixins):
             logging.debug('Video acquisition failed.')
 
         # stop acquisition
-        self._iq.put(constants.STOP)
+        self._iq.put(STOP)
         result = self._oq.get()
         if not result:
             logging.debug('Video de-acquisition failed.')
 
         # release camera
-        self._iq.put(constants.RELEASE)
+        self._iq.put(RELEASE)
         result = self._oq.get()
         if not result:
             logging.debug('Camera de-initialization failed.')
@@ -183,7 +199,7 @@ class VideoStream(VideoCameraBase,*mixins):
         with self._retreived.get_lock():
 
             # transform the raw data into a correctly shaped numpy array
-            self._current = np.array(self._retreived[:],dtype=np.uint8).reshape((1080,1440))
+            self._current = np.array(self._retreived[:],dtype=np.uint8).reshape((self._height,self._width))
 
         try:
             assert np.array_equal(self._previous,self._current) == False
@@ -194,4 +210,32 @@ class VideoStream(VideoCameraBase,*mixins):
 
         self._previous = self._current
 
-        return (True,self._current)
+        return (True, self._current)
+
+    @PropertiesMixin.binsize.setter
+    def binsize(self, value):
+        """
+        """
+
+        logging.error('Setting the binsize will break the stream.')
+        return
+
+        self._iq.put(SET)
+        self._iq.put(BINSIZE_PROPERTY_ID)
+        self._iq.put(value)
+
+        logging.info(f'Setting binsize to {value} pixels.')
+
+        result = self._oq.get()
+        if not result:
+            logging.warning(f'Failed to set the binsize to "{value}" pixel(s).')
+            return
+
+        # these attributes and objects will change if the binsize is changed
+        self._height    = int(IMAGE_SHAPE_DEFAULT[0] / value)
+        self._width     = int(IMAGE_SHAPE_DEFAULT[1] / value)
+        self._current   = np.zeros([self._height,self._width])
+        self._previous  = np.zeros([self._height,self._width])
+        logging.debug(f'Shared array size changed to {self._width * self._height}.')
+
+        self._binsize = value

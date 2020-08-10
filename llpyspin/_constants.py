@@ -7,7 +7,6 @@ SUCCESS                  =  1
 INITIALIZE               =  'a'
 SET                      =  'b'
 GET                      =  'c'
-Setting                  =  'd'
 START                    =  'e'
 STOP                     =  'f'
 RELEASE                  =  'g'

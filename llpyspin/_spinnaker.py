@@ -13,25 +13,26 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class SpinnakerMethod(object):
-    """
-    a decorator for methods which interact with the camera directly via PySpin
-    """
+# decorator that handles errors
+def spinnaker(method):
 
-    def __init__(self, method=None):
-        self.method = method
+    def fwrap(obj, camera):
 
-    def __get__(self, obj, cls): return types.MethodType(self, obj) if obj else self
-
-    def __call__(self, obj, camera):
-        if self.method is None:
-            raise AttributeError('no method given to the constructor')
         try:
-            self.method(obj, camera)
-            return SUCCESS
+            method(obj, camera)
+            result = True
+
         except PySpin.SpinnakerException:
-            logging.debug('"SpinnakerMethod" decorated method raised an exception.')
-            return FAILURE
+            logging.debug(f"a PySpin exception was raised by the '{method.__name__}' method")
+            result = False
+
+        except AssertionError:
+            logging.debug(f"an assertion error was raised by the '{method.__name__}' method")
+            result = False
+
+        return result
+
+    return fwrap
 
 class SpinnakerMixin(object):
     """
@@ -40,7 +41,7 @@ class SpinnakerMixin(object):
 
     notes
     -----
-    Objects shared between the parent and child process must be process-safe.
+    Objects shared between the parent and child process must be serializable.
     For this reason the camera object cannot be stored as a class attribute but
     must instead be created within the scope of the target function. In an
     effort to make the code more readable I created these special methods which
@@ -49,90 +50,152 @@ class SpinnakerMixin(object):
     and returns the result of the call.
     """
 
-    @SpinnakerMethod
+    @spinnaker
     def _initialize(self, camera):
         """
         initialize the camera
         """
 
-        # super(SpinnakerMixin, self)._initialize(self, camera)
-
+        # init the camera
         camera.Init()
 
-        # the only supported pixel format it 'Mono8'
-        nodemap = camera.GetNodeMap()
-        nodePixelFormat = PySpin.CEnumerationPtr(nodemap.GetNode('PixelFormat'))
-        pixelFormatEntry = PySpin.CEnumEntryPtr(nodePixelFormat.GetEntryByName('Mono8'))
-        nodePixelFormat.SetIntValue(pixelFormatEntry.GetValue())
+        # pixel format
+        camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
 
-        #
-        nodemap = camera.GetNodeMap()
-        nodeAcquisitionMode = PySpin.CEnumerationPtr(nodemap.GetNode('AcquisitionMode'))
-        acquisitionModeEntry = nodeAcquisitionMode.GetEntryByName('Continuous')
-        nodeAcquisitionMode.SetIntValue(acquisitionModeEntry.GetValue())
+        # acquisition mode
+        camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
 
-        #
-        tlstreamNodemap = camera.GetTLStreamNodeMap()
-        handlingMode = PySpin.CEnumerationPtr(tlstreamNodemap.GetNode('StreamBufferHandlingMode'))
-        handlingModeEntry = handlingMode.GetEntryByName('OldestFirst')
-        handlingMode.SetIntValue(handlingModeEntry.GetValue())
+        # stream buffer handling mode
+        camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestOnly)
+
+        # disable auto exposure
+        camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
 
         return
 
-    @SpinnakerMethod
+    @spinnaker
+    def _get(self, camera):
+        """
+        retreive the value of an acquisition property
+        """
+
+        property = self._iq.get()
+
+        if property == WIDTH_PROPERTY_ID:
+            value = camera.Width.GetValue()
+            self._oq.put(value)
+
+        if property == HEIGHT_PROPERTY_ID:
+            value = camera.Height.GetValue()
+            self._oq.put(value)
+
+        return
+
+    @spinnaker
     def _set(self, camera):
         """
         set the value of an acquisition property
         """
 
-        # super(SpinnakerMixin, self)._set(self, camera)
-
-        # retreive the property name and target value
-        id    = self._iq.get()
-        value = self._iq.get()
+        # retreive the property id and target value
+        property = self._iq.get()
+        value    = self._iq.get()
 
         # framerate
-        if id == FRAMERATE_PROPERTY_ID:
+        if property == FRAMERATE_PROPERTY_ID:
+
+            # test the requested value
+            min  = camera.AcquisitionFrameRate.GetMin()
+            max  = camera.AcquisitionFrameRate.GetMax()
+            assert min <= value <= max
+
+            # test passed
             camera.AcquisitionFrameRateEnable.SetValue(True)
             camera.AcquisitionFrameRate.SetValue(value)
 
         # exposure
-        elif id == EXPOSURE_PROPERTY_ID:
+        if property == EXPOSURE_PROPERTY_ID:
+
+            #
+            min = camera.ExposureTime.GetMin()
+            max = camera.ExposureTime.GetMax()
+            assert min <= value <= max
+
+            #
             camera.AcquisitionFrameRateEnable.SetValue(False)
-            camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
             camera.ExposureTime.SetValue(value)
             camera.AcquisitionFrameRateEnable.SetValue(True)
 
         # binsize
-        elif id == BINSIZE_PROPERTY_ID:
+        if property == BINSIZE_PROPERTY_ID:
+
+            #
+            min = camera.BinningVertical.GetMin()
+            max = camera.BinningVertical.GetMax()
+            assert min <= value <= max
+
+            #
             camera.BinningHorizontal.SetValue(value)
             camera.BinningVertical.SetValue(value)
 
+        # region of interest
+        if property == ROI_PROPERTY_ID:
+
+            # unpack the ROI parameters
+            (i, j, h, w) = value
+
+            # test height
+            min = camera.Height.GetMin()
+            max = camera.Height.GetMax()
+            assert min <= h <= max
+
+            # test width
+            min = camera.Width.GetMin()
+            max = camera.Width.GetMax()
+            assert min <= w <= max
+
+            # test x-offset
+            min = camera.OffsetY.GetMin()
+            max = camera.OffsetY.GetMax()
+            assert min <= i <= max
+
+            #
+            inc = camera.OffsetX.GetInc()
+            assert j % inc == 0
+
+            #
+            inc = camera.OffsetY.GetInc()
+            assert i % inc == 0
+
+            # test y-offset
+            min = camera.OffsetX.GetMin()
+            max = camera.OffsetX.GetMax()
+            assert min <= j <= max
+
+            # all tests passed
+            camera.Height.SetValue(h) # width and height must be set before the offset
+            camera.Width.SetValue(w)
+            camera.OffsetY.SetValue(i)
+            camera.OffsetX.SetValue(j)
+
         return
 
-    @SpinnakerMethod
+    @spinnaker
     def _start(self, camera):
-        # super(SpinnakerMixin, self)._start(self, camera)
         camera.BeginAcquisition()
 
-    @SpinnakerMethod
+    @spinnaker
     def _stop(self, camera):
-        # super(SpinnakerMixin, self)._stop(self, camera)
         camera.EndAcquisition()
 
-    @SpinnakerMethod
+    @spinnaker
     def _release(self, camera):
         """
         release the camera
         """
 
-        # super(SpinnakerMixin, self)._release(self, camera)
-
         # double-check that acquisition is stopped
-        try:
-            assert camera.IsStreaming() == False
-        except AssertionError:
-            logging.debug('The camera was not stopped before trying to release it.')
+        if camera.IsStreaming():
             camera.EndAcquisition()
 
         # de-initialize the camera

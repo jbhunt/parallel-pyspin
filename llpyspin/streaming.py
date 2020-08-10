@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import CameraBase
-from ._spinnaker  import SpinnakerMixin, SpinnakerMethod
+from ._spinnaker  import SpinnakerMixin, spinnaker
 from ._properties import PropertiesMixin
 from ._constants  import *
 
@@ -29,39 +29,21 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
 
         super().__init__(device)
 
-        # public attributes
-        self._current   = np.zeros([1440,1080])
-        self._previous  = np.zeros([1440,1080])
-        self._retreived = mp.Array('i',1080 * 1440)
-        self._width     = 1440
-        self._height    = 1080
+        # this bit of memory stores the image
+        self._container = mp.Array('i',3000000)
 
         # open the stream
         self.open()
 
         return
 
-    @SpinnakerMethod
-    def _initialize(self, camera):
-        """
-        """
-
-        SpinnakerMixin._initialize(self, camera)
-
-        # set the stream buffer handling mode to "NewestOnly"
-        tlstreamNodemap = camera.GetTLStreamNodeMap()
-        handlingMode = PySpin.CEnumerationPtr(tlstreamNodemap.GetNode('StreamBufferHandlingMode'))
-        handlingModeEntry = handlingMode.GetEntryByName('NewestOnly')
-        handlingMode.SetIntValue(handlingModeEntry.GetValue())
-
-        return
-
-    @SpinnakerMethod
+    @spinnaker
     def _start(self, camera):
         """
         start acquisition
         """
 
+        # call the overidden method
         SpinnakerMixin._start(self, camera)
 
         # main loop
@@ -74,14 +56,13 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
 
                 # convert the image
                 frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+                array = frame.GetNDArray().flatten()
+                image = np.zeros_like(self._container[:])
+                image[:array.size] = array
 
                 # store the image (critical - use lock)
-                with self._retreived.get_lock():
-                    try:
-                        self._retreived[:] = frame.GetNDArray().flatten()
-                    except:
-                        logging.debug(f'Shared array is of size {len(self._retreived[:])} but image is of size {frame.GetNDArray().size}.')
-                        return
+                with self._container.get_lock():
+                    self._container[:] = image
 
         return
 
@@ -193,49 +174,29 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         # check that the stream is open
         if self.isOpened() == False:
             logging.info('The stream is closed.')
-            return (None, False)
+            return (False, None)
 
         # the lock blocks if a new image is being written to the image attribute
-        with self._retreived.get_lock():
+        with self._container.get_lock():
+            array = np.array(self._container[:],dtype=np.uint8)
+            index = np.arange(self.size,array.size)
+            if len(index) != 0:
+                array = np.delete(array, index)
+            image = array.reshape((self.height,self.width))
 
-            # transform the raw data into a correctly shaped numpy array
-            self._current = np.array(self._retreived[:],dtype=np.uint8).reshape((self._height,self._width))
+        return (True, image)
 
-        try:
-            assert np.array_equal(self._previous,self._current) == False
+    @property
+    def size(self):
+        (i, j, h, w) = self.roi
+        return w * h
 
-        except AssertionError:
-            logging.debug('The same image was retreived twice.')
-            return (True, self._current)
+    @property
+    def height(self):
+        (i, j, h, w) = self.roi
+        return h
 
-        self._previous = self._current
-
-        return (True, self._current)
-
-    @PropertiesMixin.binsize.setter
-    def binsize(self, value):
-        """
-        """
-
-        logging.error('Setting the binsize will break the stream.')
-        return
-
-        self._iq.put(SET)
-        self._iq.put(BINSIZE_PROPERTY_ID)
-        self._iq.put(value)
-
-        logging.info(f'Setting binsize to {value} pixels.')
-
-        result = self._oq.get()
-        if not result:
-            logging.warning(f'Failed to set the binsize to "{value}" pixel(s).')
-            return
-
-        # these attributes and objects will change if the binsize is changed
-        self._height    = int(IMAGE_SHAPE_DEFAULT[0] / value)
-        self._width     = int(IMAGE_SHAPE_DEFAULT[1] / value)
-        self._current   = np.zeros([self._height,self._width])
-        self._previous  = np.zeros([self._height,self._width])
-        logging.debug(f'Shared array size changed to {self._width * self._height}.')
-
-        self._binsize = value
+    @property
+    def width(self):
+        (i, j, h, w) = self.roi
+        return w

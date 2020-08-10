@@ -39,10 +39,21 @@ class CameraBase():
         self._iq              = mp.Queue()      # input queue
         self._oq              = mp.Queue()      # output queue
 
-        # continuous acquisition properties
+        # acquisition properties
         self._framerate       = FRAMERATE_DEFAULT_VALUE
         self._exposure        = EXPOSURE_DEFAULT_VALUE
         self._binsize         = BINSIZE_DEFAULT_VALUE
+        self._roi             = None
+
+        # maps the command signatures to the appropriate class method
+        self._map = {
+            INITIALIZE : self._initialize,
+            SET        : self._set,
+            GET        : self._get,
+            START      : self._start,
+            STOP       : self._stop,
+            RELEASE    : self._release
+        }
 
         return
 
@@ -78,7 +89,7 @@ class CameraBase():
 
         # assert at least one camera
         if len(cameras) == 0:
-            raise Exception('No cameras detected.')
+            raise Exception('no cameras detected')
 
         # instantiate the camera
         try:
@@ -92,11 +103,12 @@ class CameraBase():
             if type(self.device) not in [str,int]:
                 cameras.Clear()
                 system.ReleaseInstance()
-                raise TypeError(f"The 'device' argument must be a string or integer but is of type '{type(self.device)}'.")
+                raise TypeError(f"The 'device' argument must be a string or integer but is {type(self.device)}.")
 
         except PySpin.SpinnakerException:
-            logging.error('Unable to create an instance of the camera.')
-            return
+            cameras.Clear()
+            system.ReleaseInstance()
+            raise Exception('unable to create an instance of the camera')
 
         # set the started flag to True
         self.started = True
@@ -104,7 +116,7 @@ class CameraBase():
         # main loop
         while self.started:
 
-            # listen for commands
+            # listen for method calls from the main process
             try:
                 item = self._iq.get(block=False)
 
@@ -112,27 +124,9 @@ class CameraBase():
                 continue
 
             # call the appropriate method
+            result = self._map[item](camera)
 
-            if item == INITIALIZE:
-                result = self._initialize(camera)
-
-            elif item == SET:
-                result = self._set(camera)
-
-            elif item == START:
-                result = self._start(camera)
-
-            elif item == STOP:
-                result = self._stop(camera)
-
-            elif item == RELEASE:
-                result = self._release(camera)
-
-            else:
-                logging.debug(f'The input queue received an invalid item : "{item}".')
-                result = False
-
-            # send the result
+            # return the result of the call to the main process
             self._oq.put(result)
 
             continue
@@ -160,7 +154,10 @@ class CameraBase():
 
         logging.debug('Creating the child process.')
 
+        # create the child process
         self.child = mp.Process(target=self._run,args=())
+
+        # start he child process
         self.child.start()
 
         return
@@ -173,29 +170,29 @@ class CameraBase():
         try:
             assert self.child is not None
         except AssertionError:
-            logging.warning("No child process exists. Create the child process with the '_create' method.")
+            logging.warning('no existing child process')
             return
 
-        logging.debug('Destroying the child process.')
+        logging.debug('destroying the child process')
 
         # break out of the main loop in the child process
         self.started = False
 
-        # empty out the queues - if the are not empty it can cause the call to the join method to  hang
+        # empty out the queues - if the are not empty it can cause the call to the join method to hang
         if self._iq.qsize() != 0 or self._oq.qsize() != 0:
-            logging.info('Emptying input and output queues.')
+            logging.info('emptying out input and output queues')
             while not self._iq.empty():
                 item = self._iq.get()
-                logging.info(f"'{item}' removed from the input queue")
+                logging.info(f"{item} removed from the input queue")
             while not self._oq.empty():
                 item = self._oq.get()
-                logging.info(f"'{item}' removed from the output queue")
+                logging.info(f"{item} removed from the output queue")
 
         # join the child process
         try:
             self.child.join(1) # 1" timeout
         except mp.TimeoutError:
-            logging.warning('The child process is deadlocked. Terminating.')
+            logging.warning('the child process is deadlocked')
             self.child.terminate()
             self.child.join()
 

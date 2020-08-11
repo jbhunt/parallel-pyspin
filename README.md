@@ -134,6 +134,7 @@ Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the Unive
 
 # Task list #
 - [x] Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.
-- [ ] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
+- [x] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
+- [x] Determine the resolution of the camera's sensor automatically
 - [ ] Create a test script
-- [ ] Determine the resolution of the camera's sensor automatically
+- [ ] Implement the acquisition lock with the VideoStream class

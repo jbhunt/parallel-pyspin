@@ -1,11 +1,14 @@
-from llpyspin import constants
-from llpyspin.abstract import CameraBase
-from llpyspin.abstract import specialmethod
-
+# imports
 import queue
 import logging
 import numpy as np
 import multiprocessing as mp
+
+# relative imports
+from ._processes  import CameraBase
+from ._spinnaker  import SpinnakerMixin, spinnaker
+from ._properties import PropertiesMixin
+from ._constants  import *
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -16,7 +19,7 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class PrimaryCamera(CameraBase):
+class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
     """
     """
 
@@ -27,9 +30,9 @@ class PrimaryCamera(CameraBase):
         super().__init__(device)
 
         # private attributes
-        self._triggered = False # camera trigger state
-        self._primed   = False
-        self._nickname = '<nickname>'
+        self._lock      = mp.Lock()        # acquisition lock
+        self._trigger   = mp.Event()
+        self._nickname  = 'primary-camera' # camera nickname
 
         # prime the camera
         self.prime()
@@ -38,11 +41,13 @@ class PrimaryCamera(CameraBase):
 
     ### special methods ###
 
-    @specialmethod
+    @spinnaker
     def _start(self, camera):
         """
         """
-        # configure the trigger
+
+        # engage the acquisition lock
+        self._lock.acquire()
 
         # create a counter that tracks the onset sensor exposure
         camera.CounterSelector.SetValue(PySpin.CounterSelector_Counter0)
@@ -66,20 +71,11 @@ class PrimaryCamera(CameraBase):
         # begin acquisition
         camera.BeginAcquisition()
 
-        # activate the counter - shouldn't have to do this again but you never know
-        # camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-        # camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
+        # wait for the trigger
+        self._trigger.wait() # returns the state of the internal flag
 
-        # block while waiting for the trigger command
-        triggered = self.iq.get()
-
-        # un-set the trigger mode (in effect trigger the camera)
-        if triggered:
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-
-        # abort acquisition
-        else:
-            return constants.SUCCESS
+        # unset the trigger mode
+        camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
         # main loop
         while self.acquiring:
@@ -95,13 +91,20 @@ class PrimaryCamera(CameraBase):
             # release the image
             image.Release()
 
+        # release the acquisition lock
+        self._lock.release()
+
         return
 
-    @specialmethod
+    @spinnaker
     def _stop(self, camera):
         """
         stop acquisition
         """
+
+        # reset the trigger
+        if self._trigger.is_set():
+            self._trigger.clear()
 
         # stop acquisition
         if camera.IsStreaming():
@@ -122,52 +125,30 @@ class PrimaryCamera(CameraBase):
         prime the camera for video acquisition
         """
 
-        # check that the camera isn't acquiring
-        try:
-            assert self.primed is False
-        except AssertionError:
-            logging.info('Video acquisition is already started.')
+        # make sure the camera isn't started
+        if self.primed is True:
+            logging.info('camera is already primed')
             return
 
         # intitialize the child process
-        self._createChild()
+        if self.child is None:
+            self._create()
 
         # attempt to initialize the camera
-        attempt   = 0 # attempt counter
-        threshold = 5 # max number of attempts allowed
-        result    = constants.FAILURE # default result
-
-        while not result:
-
-            # check attempt counter
-            attempt += 1
-            if attempt > threshold:
-                logging.error(f'Failed to initialize the camera with {attempt} attempts. Destroying child.')
-                self._destroyChild()
-                return
-
-            # attempt to initialize the camera
-            self._.iq.put(constants.INITIALIZE)
-            result = self._.oq.get()
-
-            # restart the child process
-            if not result:
-                logging.warning(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
-                self._destroyChild()
-                self._createChild()
-                continue
+        self._iq.put(INITIALIZE)
+        result = self._oq.get()
+        if not result:
+            logging.error(f'camera initialization failed')
+            return
 
         # set the acquisition properties
-        self._setAllProperties()
+        self._setall()
 
         # set the acquiring flag to 1
         self.acquiring = True
 
-        # send the acquisition command
-        self._iq.put(constants.START)
-
-        # set the triggered flag to False
-        self._triggered = False
+        # send command to start acquisition
+        self._iq.put(START)
 
         return
 
@@ -178,14 +159,10 @@ class PrimaryCamera(CameraBase):
 
         # start acquisition if necessary
         if not self.primed:
-            logging.warning('Video acquisition is not started. Call the prime method.')
+            logging.warning('camera is not primed')
             return
 
-        # set the triggered flag to True
-        self._triggered = True
-
-        # send the trigger state to the child process
-        self._iq.put(self.triggered)
+        self._trigger.set()
 
         return
 
@@ -194,30 +171,30 @@ class PrimaryCamera(CameraBase):
         stop video acquisition
         """
 
-        # check that the camera is acquiring
-        try:
-            assert self.primed is True
-        except AssertionError:
-            logging.info('Video acquisition is already stopped.')
-            return
+        logging.info('stopping video acquisition')
 
-        # release the trigger if the camera is still waiting for it
-        if not self.triggered:
-            self._iq.put(self.triggered)
+        # check that the camera is acquiring
+        if not self.acquiring:
+            logging.info('video acquisition is already stopped')
+            return
 
         # break out of the acquisition loop
         self.acquiring = False
 
+        # abort the acquisition if necessary
+        if not self._trigger.is_set():
+            self._trigger.set() # release the trigger
+
         # retreive the result (sent after exiting the acquisition loop)
         result = self._oq.get()
         if not result:
-            logging.warning('Video acquisition failed.')
+            logging.warning('video acquisition failed')
 
         # stop acquisition
-        self._iq.put(constants.STOP)
+        self._iq.put(STOP)
         result = self._oq.get()
         if not result:
-            logging.warning('Video de-acquisition failed.')
+            logging.warning('video de-acquisition failed')
 
         return
 
@@ -228,24 +205,28 @@ class PrimaryCamera(CameraBase):
 
         # stop acquisition if acquiring
         if self.primed:
-            logging.info('Stopping video acquisition.')
             self.stop()
 
         #
-        self._iq.put(constants.RELEASE)
+        self._iq.put(RELEASE)
         result = self._oq.get()
         if not result:
-            logging.warning('Camera de-initialization failed.')
+            logging.warning('camera de-initialization failed')
 
         # stop and join the child process
-        self._destroyChild()
+        self._destroy()
 
         return
+
+    # camera ready state
+    @property
+    def primed(self):
+        return True if self.child is not None and self.acquiring == 1 else False
 
     # camera trigger state
     @property
     def triggered(self):
-        return self._triggered
+        return True if self._trigger.is_set() else False
 
     # nickname
     @property
@@ -254,9 +235,3 @@ class PrimaryCamera(CameraBase):
     @nickname.setter
     def nickname(self, value):
         self._nickname = value
-
-    # camera ready state
-    @property
-    def primed(self):
-        self._primed = True if self.child is not None and self.acquiring == 1 else False
-        return self._primed

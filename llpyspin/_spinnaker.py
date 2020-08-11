@@ -5,7 +5,7 @@ import logging
 from ._constants import *
 
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # try to import the PySpin package
 try:
@@ -26,13 +26,20 @@ def spinnaker(method):
             logging.debug(f"a PySpin exception was raised by the '{method.__name__}' method")
             result = False
 
-        except AssertionError:
-            logging.debug(f"an assertion error was raised by the '{method.__name__}' method")
+        except PropertyValueError as error:
+            logging.debug(error.message)
             result = False
 
         return result
 
     return fwrap
+
+class PropertyValueError(Exception):
+    """error raised for failed attempts to set the value of an acquisition property"""
+
+    def __init__(self, property, value):
+        super().__init__()
+        self.message = f'{value} is an invalid value for {property}'
 
 class SpinnakerMixin(object):
     """
@@ -81,13 +88,16 @@ class SpinnakerMixin(object):
 
         property = self._iq.get()
 
+        if property == FRAMERATE_PROPERTY_ID:
+            value = camera.AcquisitionFrameRate.GetMax()
+
         if property == WIDTH_PROPERTY_ID:
-            value = camera.Width.GetValue()
-            self._oq.put(value)
+            value = camera.Width.GetMax()
 
         if property == HEIGHT_PROPERTY_ID:
-            value = camera.Height.GetValue()
-            self._oq.put(value)
+            value = camera.Height.GetMax()
+
+        self._oq.put(value)
 
         return
 
@@ -107,7 +117,8 @@ class SpinnakerMixin(object):
             # test the requested value
             min  = camera.AcquisitionFrameRate.GetMin()
             max  = camera.AcquisitionFrameRate.GetMax()
-            assert min <= value <= max
+            if not min <= value <= max:
+                raise PropertyValueError('framerate', value)
 
             # test passed
             camera.AcquisitionFrameRateEnable.SetValue(True)
@@ -119,7 +130,8 @@ class SpinnakerMixin(object):
             #
             min = camera.ExposureTime.GetMin()
             max = camera.ExposureTime.GetMax()
-            assert min <= value <= max
+            if not min <= value <= max:
+                raise PropertyValueError('exposure', value)
 
             #
             camera.AcquisitionFrameRateEnable.SetValue(False)
@@ -132,7 +144,10 @@ class SpinnakerMixin(object):
             #
             min = camera.BinningVertical.GetMin()
             max = camera.BinningVertical.GetMax()
-            assert min <= value <= max
+            if not min <= value <= max:
+                raise PropertyValueError('binsize',  value)
+
+            # TODO : check that the value is a valid increment of each bin axis
 
             #
             camera.BinningHorizontal.SetValue(value)
@@ -142,41 +157,41 @@ class SpinnakerMixin(object):
         if property == ROI_PROPERTY_ID:
 
             # unpack the ROI parameters
-            (i, j, h, w) = value
+            (y, x, h, w) = value # TODO : change the order of parameters to x, y, w, h
 
             # test height
             min = camera.Height.GetMin()
             max = camera.Height.GetMax()
-            assert min <= h <= max
+            if not min <= h <= max:
+                raise PropertyValueError('height', h)
 
             # test width
             min = camera.Width.GetMin()
             max = camera.Width.GetMax()
-            assert min <= w <= max
+            if not min <= w <= max:
+                raise PropertyValueError('width', w)
+
+            # set the new height and width
+            camera.Height.SetValue(h)
+            camera.Width.SetValue(w)
 
             # test x-offset
-            min = camera.OffsetY.GetMin()
-            max = camera.OffsetY.GetMax()
-            assert min <= i <= max
-
-            #
-            inc = camera.OffsetX.GetInc()
-            assert j % inc == 0
-
-            #
-            inc = camera.OffsetY.GetInc()
-            assert i % inc == 0
-
-            # test y-offset
             min = camera.OffsetX.GetMin()
             max = camera.OffsetX.GetMax()
-            assert min <= j <= max
+            inc = camera.OffsetX.GetInc()
+            if not min <= x <= max or x % inc != 0:
+                raise PropertyValueError('x-offset', x)
+
+            # test y-offset
+            min = camera.OffsetY.GetMin()
+            max = camera.OffsetY.GetMax()
+            inc = camera.OffsetY.GetInc()
+            if not min <= y <= max or y % inc != 0:
+                raise PropertyValueError('y-offset', y)
 
             # all tests passed
-            camera.Height.SetValue(h) # width and height must be set before the offset
-            camera.Width.SetValue(w)
-            camera.OffsetY.SetValue(i)
-            camera.OffsetX.SetValue(j)
+            camera.OffsetY.SetValue(y)
+            camera.OffsetX.SetValue(x)
 
         return
 

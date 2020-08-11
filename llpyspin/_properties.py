@@ -34,6 +34,70 @@ class AcquisitionProperty(object):
             raise AttributeError("unreadable attribute")
         return self.fget(obj)
 
+    def pause(self, obj):
+        """
+        """
+
+        if not obj.acquiring:
+            return False
+
+        logging.debug('pausing acquisition')
+
+        #
+        obj.acquiring = False
+        result = obj._oq.get()
+        if not result:
+            logging.debug('video acquisition failed')
+
+        #
+        obj._iq.put(STOP)
+        result = obj._oq.get()
+        if not result:
+            logging.debug('video de-acquisition failed')
+
+        return True
+
+    def resume(self, obj):
+        """
+        """
+
+        logging.debug('resuming acquisition.')
+
+        # set the acquisition flag to True
+        obj.acquiring = True
+
+        # start the acquisition
+        obj._iq.put(START)
+
+        return
+
+    def lock(self, obj):
+        """
+        """
+
+        if hasattr(obj,'_lock'):
+            result = obj._lock.acquire(block=False)
+            if not result:
+                raise Exception('acquisition lock is engaged')
+
+        return
+
+    def unlock(self, obj):
+        """
+        """
+
+        if hasattr(obj,'_lock'):
+
+            try:
+                obj._lock.release()
+
+            # this happens if the lock is released manually in the property's setter method
+            except ValueError:
+                logging.debug('acquisition lock released more than once')
+                pass
+
+        return
+
     def __set__(self, obj, value):
         """
         """
@@ -41,29 +105,23 @@ class AcquisitionProperty(object):
         if self.fset is None:
             raise AttributeError("can't set attribute")
 
-        # pause acquiition
-        try:
-            assert obj.acquiring == False
-            restart = False
+        # acquire acquisition lock
+        self.lock(obj)
 
-        except AssertionError:
-            logging.debug('pausing acquisition')
-            obj.acquiring = False
-            result = obj._oq.get()
-            if not result: logging.debug('video acquisition failed')
-            obj._iq.put(STOP)
-            result = obj._oq.get()
-            if not result: logging.debug('video de-acquisition failed')
-            restart = True
+        # pause ongoing acquisition
+        restart = self.pause(obj)
 
         # call the fset method
         self.fset(obj, value)
 
         # restart acquisition
         if restart:
-            logging.debug('unpausing acquisition.')
-            obj.acquiring = True
-            obj._iq.put(START)
+            self.resume(obj)
+
+        # release acquisition lock
+        self.unlock(obj)
+
+        return
 
     def __delete__(self, obj):
         if self.fdel is None:
@@ -92,6 +150,7 @@ class PropertiesMixin(object):
         self.framerate = self._framerate
         self.exposure  = self._exposure
         self.binsize   = self._binsize
+        self.roi       = self._roi
 
         return
 
@@ -104,15 +163,28 @@ class PropertiesMixin(object):
         """
         """
 
+        if value is None:
+
+            logging.debug('setting framerate to maximum value')
+
+            # retreive max framerate for current camera settings
+            self._iq.put(GET)
+            self._iq.put(FRAMERATE_PROPERTY_ID)
+            value = self._oq.get()
+            result = self._oq.get()
+            if not result:
+                logging.error(f'failed to retreive maximum framerate value')
+                return
+
         self._iq.put(SET)
         self._iq.put(FRAMERATE_PROPERTY_ID) # tell the child what property is being set
         self._iq.put(value)
 
-        logging.info(f'Setting framerate to {value} fps.')
+        logging.info(f'setting framerate to {value} fps')
 
         result = self._oq.get()
         if not result:
-            logging.warning(f'Failed to set the framerate to "{value}" fps.')
+            logging.warning(f'failed to set the framerate to {value} fps')
             return
 
         self._framerate = value
@@ -132,14 +204,15 @@ class PropertiesMixin(object):
         self._iq.put(EXPOSURE_PROPERTY_ID) # tell the child what property is being set
         self._iq.put(value)
 
-        logging.info(f'Setting exposure to {value} us.')
+        logging.info(f'setting exposure to {value} us')
 
         result = self._oq.get()
         if not result:
-            logging.warning(f'Failed to set the exposure to "{value}" us.')
+            logging.warning(f'failed to set the exposure to {value} us')
             return
 
         self._exposure = value
+
         return
 
     # binsize
@@ -155,16 +228,25 @@ class PropertiesMixin(object):
         self._iq.put(BINSIZE_PROPERTY_ID)
         self._iq.put(value)
 
-        logging.info(f'Setting binsize to {value} pixels.')
+        logging.info(f'setting binsize to {value} pixel(s)')
 
         result = self._oq.get()
         if not result:
-            logging.warning(f'Failed to set the binsize to "{value}" pixel(s).')
+            logging.warning(f'failed to set the binsize to {value} pixel(s)')
             return
 
         self._binsize = value
 
-        # reset the ROI parameters according to the new binsize
+        # NOTE : to reset the ROI parameters the acquisition lock needs to be
+        #        released here because the lock is acquired inside the
+        #        descriptor's __set__ method to avoid changing the value of
+        #        properties during video acquisition (see the descriptor's class
+        #        definition)
+
+        if hasattr(self,'_lock'):
+            self._lock.release()
+
+        # reset the ROI as changing the binsize invalidates the ROI parameters
         self.roi = None
 
         return
@@ -181,13 +263,16 @@ class PropertiesMixin(object):
         # reset the ROI
         if value == None:
 
+            logging.debug('resetting the ROI')
+            level = logging.DEBUG # change the logging level
+
             # get width
             self._iq.put(GET)
             self._iq.put(WIDTH_PROPERTY_ID)
             width = self._oq.get()
             result = self._oq.get()
 
-            # get width
+            # get height
             self._iq.put(GET)
             self._iq.put(HEIGHT_PROPERTY_ID)
             height = self._oq.get()
@@ -195,11 +280,16 @@ class PropertiesMixin(object):
 
             value = (0, 0, height, width)
 
+        # make sure the parameters are integers
+        else:
+            value = tuple(map(int, value))
+            level = logging.INFO
+
         self._iq.put(SET)
         self._iq.put(ROI_PROPERTY_ID)
         self._iq.put(value)
 
-        logging.info(f'setting the ROI parameters to {value}.')
+        logging.log(level, f'setting the ROI parameters to {value}.')
 
         result = self._oq.get()
         if not result:

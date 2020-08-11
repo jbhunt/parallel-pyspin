@@ -46,10 +46,10 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         # call the overidden method
         SpinnakerMixin._start(self, camera)
 
-        # main loop
+        # main acquisition loop
         while self._acquiring.value:
 
-            image = camera.GetNextImage()
+            image = camera.GetNextImage(1000)
 
             #
             if not image.IsIncomplete():

@@ -8,7 +8,7 @@ import multiprocessing as mp
 from ._constants import *
 
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # try to import the PySpin package
 try:
@@ -123,7 +123,7 @@ class CameraBase():
             except queue.Empty:
                 continue
 
-            # call the appropriate method
+            # call the appropriate class method
             result = self._map[item](camera)
 
             # return the result of the call to the main process

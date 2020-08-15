@@ -55,14 +55,14 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
     # overwrite the framerate and exposure properties' setter method
 
     @AcquisitionProperty
-    def framerate(self): return self._framerate
+    def framerate(self): return None
 
     @framerate.setter
     def framerate(self, value):
         logging.warning('framerate is set by the primary camera')
 
     @AcquisitionProperty
-    def exposure(self): return self._exposure
+    def exposure(self): return None
 
     @exposure.setter
     def exposure(self, value):

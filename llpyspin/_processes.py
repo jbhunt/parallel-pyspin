@@ -48,11 +48,11 @@ class CameraBase():
         # maps the command signatures to the appropriate class method
         self._map = {
             INITIALIZE : self._initialize,
-            SET        : self._set,
-            GET        : self._get,
+            RELEASE    : self._release,
             START      : self._start,
             STOP       : self._stop,
-            RELEASE    : self._release
+            SET        : self._set,
+            GET        : self._get,
         }
 
         return

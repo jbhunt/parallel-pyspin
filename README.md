@@ -67,8 +67,7 @@ This script takes care of steps 1-3 of the procedures for installation outlined 
 # Usage #
 ## Streaming ##
 ### Creating a video stream ###
-This example demonstrates how to use the `llpyspin.streaming.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
-
+This example demonstrates how to use the `llpyspin.streaming.VideoStream` class to create a video stream for a single camera.
 ```python
 In [1]: from llpyspin import streaming                                                    
 
@@ -80,7 +79,10 @@ INFO : setting framerate to 30 fps
 INFO : setting exposure to 1500 us
 INFO : setting binsize to 1 pixel(s)
 INFO : setting the ROI parameters to (0, 0, 1080, 1440).
+```
 
+The VideoStream class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class.
+```python
 In [4]: cap.isOpened()                                                                    
 Out[4]: True
 
@@ -101,13 +103,16 @@ array([[2, 2, 1, ..., 1, 1, 1],
 
 In [8]: image.shape                                                                       
 Out[8]: (1080, 1440)
+```
 
+As with the OpenCV VideoCapture class be sure to release the stream when you're done with it.
+```python
 In [9]: cap.release()                                                                     
 INFO : Releasing the video stream.
 ```
 
 ### Modifying video stream properties ###
-Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, the VideoStream class uses Python properties to get and set properties of video acquisition. This interface applies to the camera classes as well.
+Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, the VideoStream class uses Python properties to get and set properties of video acquisition.
 
 ``` python
 In [10]: cap.framerate                                                                     
@@ -118,37 +123,63 @@ INFO : setting framerate to 10 fps
 
 In [12]: cap.framerate                                                                    
 Out[12]: 10
+```
 
-# the properties are constrained
+The values of a given property are constrained by the limitations of the camera.
+```python
 In [13]: cap.framerate = 1000                                                             
 INFO : setting framerate to 1000 fps
 WARNING : failed to set the framerate to 1000 fps
+
+In [13]: cap.framerate
+Out[13]: 10
 ```
 
 ## Cameras ##
 ### Creating an instance of a primary camera ###
-
+Instead of passing a device index to the constructor, you can give it the camera's serial number. This is recommended for maintaining the identity of the primary camera and secondary camera(s).
 ```Python
->>> from llpyspin import primary
->>> device = str(12345678) # primary camera serial number
->>> cam1 = primary.PrimaryCamera(device)
->>> cam1.primed # check that the camera is primed
-True
->>> cam1.prime() # you only need to prime the camera once
-INFO : video acquisition is already started
->>> cam1.framerate = 10 # the camera is locked when it is primed
-<traceback>
-Exception : the acquisition lock is engaged
->>> cam1.trigger() # trigger camera
->>> cam1.stop() # stop acquisition
->>> cam1.primed
-False
->>> cam1.framerate = 10 # the camera is unlocked now
-INFO : setting framerate to 10 fps
->>> cam1.prime() # you can re-prime the camera for subsequent recordings
->>> cam1.primed
-True
->>> cam1.release() # be sure to clean up when you're done
+In [1]: from llpyspin import primary
+
+In [2]: device = str(12345678)
+
+In [3]: cam1 = primary.PrimaryCamera(device)                                                   
+INFO : setting framerate to 30 fps
+INFO : setting exposure to 1500 us
+INFO : setting binsize to 1 pixel(s)
+INFO : setting the ROI parameters to (0, 0, 1080, 1440).
+```
+
+In contrast to a video stream, a camera object is either 'primed', i.e., ready to acquire video, or not. This state is monitored by the 'primed' attribute (True or False). The camera will be primed during instantiation.
+```Python
+In [4]: cam1.primed                                                                       
+Out[4]: True
+```
+
+To take the camera out of the primed state, you need to stop the acquisition.
+```Python
+In [5]: cam1.stop()                                                                       
+INFO : stopping video acquisition
+```
+
+To begin the video recording call the camera's 'trigger' method.
+```Python
+In [5]: cam1.trigger()                                                                    
+WARNING : camera is not primed # woops - we need to re-prime the camera
+
+In [6]: cam1.prime()                                                                      
+INFO : setting framerate to 30 fps
+INFO : setting exposure to 1500 us
+INFO : setting binsize to 1 pixel(s)
+INFO : setting the ROI parameters to (0, 0, 1080, 1440).
+
+In [7]: cam1.trigger()                                                                   
+```
+
+To end the video recording, call the camera's 'stop' method.
+```Python
+In [8]: cam1.stop()                                                                      
+INFO : stopping video acquisition
 ```
 
 ### Adding one or more secondary cameras ###

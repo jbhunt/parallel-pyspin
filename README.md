@@ -70,37 +70,59 @@ This script takes care of steps 1-3 of the procedures for installation outlined 
 This example demonstrates how to use the `llpyspin.streaming.VideoStream` class to create a video stream for a single camera. This class operates almost exactly like OpenCV's [VideoCapture](https://docs.opencv.org/3.4/d8/dfe/classcv_1_1VideoCapture.html) class in that is has many of the same methods and functionality. Multiple video streams cannot be synchronized with each other.
 
 ```python
->>> from llpyspin import streaming
->>> device = 0 # device index
->>> cap = streaming.VideoStream(device)
->>> cap.isOpened()
-True
->>> result,image = cap.read()
->>> result
-True
->>> image.shape
-(1080,1440)
->>> cap.release()
+In [1]: from llpyspin import streaming                                                    
+
+In [2]: device = 0                                                                        
+
+In [3]: cap = streaming.VideoStream(device)                                               
+INFO : Opening the video stream.
+INFO : setting framerate to 30 fps
+INFO : setting exposure to 1500 us
+INFO : setting binsize to 1 pixel(s)
+INFO : setting the ROI parameters to (0, 0, 1080, 1440).
+
+In [4]: cap.isOpened()                                                                    
+Out[4]: True
+
+In [5]: result,image = cap.read()                                                         
+
+In [6]: result                                                                            
+Out[6]: True
+
+In [7]: image                                                                             
+Out[7]:
+array([[2, 2, 1, ..., 1, 1, 1],
+       [2, 1, 2, ..., 1, 2, 1],
+       [2, 1, 1, ..., 1, 1, 1],
+       ...,
+       [2, 1, 2, ..., 1, 1, 1],
+       [1, 1, 1, ..., 1, 1, 1],
+       [1, 1, 1, ..., 1, 1, 1]], dtype=uint8)
+
+In [8]: image.shape                                                                       
+Out[8]: (1080, 1440)
+
+In [9]: cap.release()                                                                     
+INFO : Releasing the video stream.
 ```
 
 ### Modifying video stream properties ###
 Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, the VideoStream class uses Python properties to get and set properties of video acquisition. This interface applies to the camera classes as well.
 
 ``` python
->>> cap.framerate
-30
->>> cap.framerate = 10
+In [10]: cap.framerate                                                                     
+Out[10]: 30
+
+In [11]: cap.framerate = 10                                                               
 INFO : setting framerate to 10 fps
->>> cap.framerate
-10
->>> cap.framerate = 120 # the properties are constrained
-WARNING : failed to set framerate to 120 fps
->>> cam.binsize
-1
->>> cam.exposure
-1500
->>> cam.roi
-(0, 0, 1440, 1080)
+
+In [12]: cap.framerate                                                                    
+Out[12]: 10
+
+# the properties are constrained
+In [13]: cap.framerate = 1000                                                             
+INFO : setting framerate to 1000 fps
+WARNING : failed to set the framerate to 1000 fps
 ```
 
 ## Cameras ##
@@ -144,11 +166,9 @@ AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 ```
 
 # Task list #
-- [x] Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.
-- [x] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
-- [x] Determine the resolution of the camera's sensor automatically
 - [ ] Create a test script
 - [ ] Implement the acquisition lock in the VideoStream class
+- [ ] Implement an interface for recording video for the camera classes
 
 # Contributors #
 Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

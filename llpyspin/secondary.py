@@ -1,11 +1,13 @@
-from llpyspin import constants
-from llpyspin.abstract import CameraBase
-from llpyspin.abstract import specialmethod
-
 import queue
 import logging
 import numpy as np
 import multiprocessing as mp
+
+# relative imports
+from ._processes  import CameraBase
+from ._spinnaker  import SpinnakerMixin, spinnaker
+from ._properties import PropertiesMixin, AcquisitionProperty
+from ._constants  import *
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -16,7 +18,7 @@ try:
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
 
-class SecondaryCamera(CameraBase):
+class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
     """
     """
 
@@ -24,20 +26,51 @@ class SecondaryCamera(CameraBase):
         """
         """
 
-        super().__init__(device)
+        try:
+            super().__init__(device)
 
-        # private attributes
-        self._primed   = False
-        self._nickname = '<nickname>'
+            # private attributes
+            self._primed   = False
+            self._nickname = '<nickname>'
 
-        # prime the camera
-        self.prime()
+            # prime the camera
+            self.prime()
+
+        except:
+            self.destroy()
 
         return
 
-    ### special methods ###
+    # overwrite the '_setall' method
 
-    @special method
+    def _setall(self):
+        """
+        """
+
+        self.binsize = self._binsize
+        self.roi     = self._roi
+
+        return
+
+    # overwrite the framerate and exposure properties' setter method
+
+    @AcquisitionProperty
+    def framerate(self): return self._framerate
+
+    @framerate.setter
+    def framerate(self, value):
+        logging.warning('framerate is set by the primary camera')
+
+    @AcquisitionProperty
+    def exposure(self): return self._exposure
+
+    @exposure.setter
+    def exposure(self, value):
+        logging.warning('exposure is set by the primary camera')
+
+    ### private methods ###
+
+    @spinnaker
     def _start(self, camera):
         """
         """
@@ -55,12 +88,11 @@ class SecondaryCamera(CameraBase):
         while self.acquiring:
 
 
-            ### NOTE ###
-            #
+            # NOTE
+            # ----
             # There's a 3 second timeout for the call to GetNextImage to prevent
             # the secondary camera from blocking when video acquisition is
             # aborted before the primary camera is triggered (see below).
-            #
 
             try:
                 image = camera.GetNextImage(3000) # timeout
@@ -78,7 +110,7 @@ class SecondaryCamera(CameraBase):
 
         return
 
-    @specialmethod
+    @spinnaker
     def _stop(self, camera):
         """
         stop acquisition
@@ -102,48 +134,29 @@ class SecondaryCamera(CameraBase):
         """
 
         # check that the camera isn't acquiring
-        try:
-            assert self.primed is False
-        except AssertionError:
-            logging.info('Video acquisition is already started.')
+        if self.primed:
+            logging.info('camera is already primed')
             return
 
         # intitialize the child process
-        self._createChild()
+        if self.child is None:
+            self._create()
 
         # attempt to initialize the camera
-        attempt   = 0 # attempt counter
-        threshold = 5 # max number of attempts allowed
-        result    = constants.FAILURE # default result
-
-        while not result:
-
-            # check attempt counter
-            attempt += 1
-            if attempt > threshold:
-                logging.error(f'Failed to initialize the camera with {attempt} attempts. Destroying child.')
-                self._destroyChild()
-                return
-
-            # attempt to initialize the camera
-            self._iq.put(constants.INITIALIZE)
-            result = self._.oq.get()
-
-            # restart the child process
-            if not result:
-                logging.warning(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
-                self._destroyChild()
-                self._createChild()
-                continue
+        self._iq.put(INITIALIZE)
+        result = self._oq.get()
+        if not result:
+            logging.error(f'camera initialization failed')
+            return
 
         # set the acquisition properties
-        self._setAllProperties()
+        self._setall()
 
         # set the acquiring flag to 1
         self.acquiring = True
 
         # send the acquisition command
-        self._iq.put(constants.START)
+        self._iq.put(START)
 
         return
 
@@ -156,7 +169,7 @@ class SecondaryCamera(CameraBase):
         try:
             assert self.primed is True
         except AssertionError:
-            logging.info('Video acquisition is already stopped.')
+            logging.info('video acquisition is already stopped')
             return
 
         # break out of the acquisition loop
@@ -165,13 +178,13 @@ class SecondaryCamera(CameraBase):
         # retreive the result (sent after exiting the acquisition loop)
         result = self._oq.get()
         if not result:
-            logging.warning('Video acquisition failed.')
+            logging.debug('video acquisition failed')
 
         # stop acquisition
-        self._iq.put(constants.STOP)
+        self._iq.put(STOP)
         result = self._oq.get()
         if not result:
-            logging.warning('Video de-acquisition failed.')
+            logging.debug('video de-acquisition failed')
 
         return
 
@@ -182,17 +195,17 @@ class SecondaryCamera(CameraBase):
 
         # stop acquisition if acquiring
         if self.primed:
-            logging.info('Stopping video acquisition.')
+            logging.info('stopping video acquisition')
             self.stop()
 
         #
-        self._iq.put(constants.RELEASE)
+        self._iq.put(RELEASE)
         result = self._oq.get()
         if not result:
-            logging.warning('Camera de-initialization failed.')
+            logging.warning('camera de-initialization failed')
 
         # stop and join the child process
-        self._destroyChild()
+        self._destroy()
 
         return
 

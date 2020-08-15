@@ -183,17 +183,24 @@ INFO : stopping video acquisition
 ```
 
 ### Adding one or more secondary cameras ###
-A secondary camera's acquisition is coupled to the primary camera's acquisition via a hardware trigger.
+A secondary camera's acquisition is coupled to the primary camera's acquisition via a hardware trigger. This should only be used in conjunction with a PrimaryCamera instance.
 
-```python
->>> from llpyspin import secondary
->>> device2 = str(87654321)
->>> cam2 = secondary.SecondaryCamera(device2)
->>> cam2.primed
-True
->>> cam2.trigger() # the SecondaryCamera class has no trigger method
-<traceback>
-AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
+```Python
+In [1]: from llpyspin import secondary
+
+In [2]: device = str(87654321)
+
+In [3]: cam2 = secondary.SecondaryCamera(device)                                                   
+INFO : setting binsize to 1 pixel(s)
+INFO : setting the ROI parameters to (0, 0, 1080, 1440).
+```
+
+The 'framerate' and 'exposure' properties are not writable for this object because these values are determined by the primary camera.
+```Python
+In [4]: cam2.framerate = 10
+WARNING : framerate is set by the primary camera
+In [5]: cam2.framerate
+# returns None
 ```
 
 # Task list #

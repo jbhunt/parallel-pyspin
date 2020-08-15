@@ -17,8 +17,8 @@ For questions or general correspondence please send an email to hunt.brian.joshu
    2. [Cameras](https://github.com/jbhunt/parallel-pyspin/#cameras)
       1. [Creating an instance of a primary camera](https://github.com/jbhunt/parallel-pyspin/#creating-an-instance-of-a-primary-camera)
       2. [Adding one or more secondary cameras](https://github.com/jbhunt/parallel-pyspin/#modifying-camera-properties)
-4. [Contributers](https://github.com/jbhunt/parallel-pyspin/#contributers)
-5. [TODO list](https://github.com/jbhunt/parallel-pyspin/#task-list)
+4. [Task list](https://github.com/jbhunt/parallel-pyspin/#task-list)
+5. [Contributers](https://github.com/jbhunt/parallel-pyspin/#contributers)
 
 # 1. Description #
 This package provides another layer of abstraction on top of [PySpin](https://www.flir.com/products/spinnaker-sdk/) (the Python wrapper for FLIR's Spinnaker software development kit). This new layer of abstraction provides these additional features:
@@ -79,24 +79,32 @@ True
 >>> result
 True
 >>> image.shape
-(540,720)
+(1080,1440)
 >>> cap.release()
 ```
 
 ### Modifying video stream properties ###
-Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, respectively, the VideoStream class uses Python properties to get and set properties of video acquisition. This interface applies to the camera classes as well.
+Unlike OpenCV's VideoCapture class which uses a 'get' and 'set' class method to query and assign property values, the VideoStream class uses Python properties to get and set properties of video acquisition. This interface applies to the camera classes as well.
 
 ``` python
 >>> cap.framerate
-60
->>> cap.framerate = 100
->>> cap.framerate = 121 # some of the properties are constrained
-WARNING : The requested framerate of 121 fps falls outside the range of permitted values (1 - 120). Defaulting to 60 fps.
+30
+>>> cap.framerate = 10
+INFO : setting framerate to 10 fps
+>>> cap.framerate
+10
+>>> cap.framerate = 120 # the properties are constrained
+WARNING : failed to set framerate to 120 fps
+>>> cam.binsize
+1
+>>> cam.exposure
+1500
+>>> cam.roi
+(0, 0, 1440, 1080)
 ```
 
 ## Cameras ##
 ### Creating an instance of a primary camera ###
-A primary camera generates a digital signal which dictates when secondary cameras acquire images. This allows for synchronous acquisition between multiple cameras.
 
 ```Python
 >>> from llpyspin import primary
@@ -105,11 +113,16 @@ A primary camera generates a digital signal which dictates when secondary camera
 >>> cam1.primed # check that the camera is primed
 True
 >>> cam1.prime() # you only need to prime the camera once
-INFO : Video acquisition is already started
+INFO : video acquisition is already started
+>>> cam1.framerate = 10 # the camera is locked when it is primed
+<traceback>
+Exception : the acquisition lock is engaged
 >>> cam1.trigger() # trigger camera
 >>> cam1.stop() # stop acquisition
 >>> cam1.primed
 False
+>>> cam1.framerate = 10 # the camera is unlocked now
+INFO : setting framerate to 10 fps
 >>> cam1.prime() # you can re-prime the camera for subsequent recordings
 >>> cam1.primed
 True
@@ -126,15 +139,16 @@ A secondary camera's acquisition is coupled to the primary camera's acquisition 
 >>> cam2.primed
 True
 >>> cam2.trigger() # the SecondaryCamera class has no trigger method
+<traceback>
 AttributeError: 'SecondaryCamera' object has no attribute 'trigger'
 ```
-
-# Contributors #
-Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.
 
 # Task list #
 - [x] Get rid of the config.yaml file in favor of hardcoding all default properties in the constants module.
 - [x] Move from using queues to implement the camera trigger to using a multiprocessing Event object.
 - [x] Determine the resolution of the camera's sensor automatically
 - [ ] Create a test script
-- [ ] Implement the acquisition lock with the VideoStream class
+- [ ] Implement the acquisition lock in the VideoStream class
+
+# Contributors #
+Big thanks to Dr. Ryan Williamson and the Scientific Computing Core at the University of Colorado, Anschutz Medical Campus.

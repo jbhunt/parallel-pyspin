@@ -43,8 +43,8 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         start acquisition
         """
 
-        # call the overidden method
-        SpinnakerMixin._start(self, camera)
+        # engage the acquisition lock
+        camera.BeginAcquisition()
 
         # main acquisition loop
         while self._acquiring.value:
@@ -93,30 +93,12 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         # initialize the child process
         self._create()
 
-        # initialize the camera
-        attempt   = 0 # attempt counter
-        threshold = 5 # max number of attempts allowed
-        result    = False # default result
-
-        while not result:
-
-            # check attempt counter
-            attempt += 1
-            if attempt > threshold:
-                logging.error(f'Failed to initialize the camera with {attempt} attempts. Destroying child.')
-                self._destroy()
-                return
-
-            # attempt to initialize the camera
-            self._iq.put(INITIALIZE)
-            result = self._oq.get()
-
-            # restart the child process
-            if not result:
-                logging.debug(f'Camera initialization failed (attempt number {attempt}). Restarting child.')
-                self._destroy()
-                self._create()
-                continue
+        # attempt to initialize the camera
+        self._iq.put(INITIALIZE)
+        result = self._oq.get()
+        if not result:
+            logging.debug(f'camera initialization failed')
+            self._destroy()
 
         # set all properties to their default values
         self._setall()
@@ -133,9 +115,7 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         """
         """
 
-        try:
-            assert self.isOpened() == True
-        except AssertionError:
+        if self.isOpened() == False:
             logging.info("The video stream is closed,")
             return
 
@@ -147,19 +127,19 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         # retreive the result (sent after exiting the acquisition loop)
         result = self._oq.get()
         if not result:
-            logging.debug('Video acquisition failed.')
+            logging.debug('video acquisition failed')
 
         # stop acquisition
         self._iq.put(STOP)
         result = self._oq.get()
         if not result:
-            logging.debug('Video de-acquisition failed.')
+            logging.debug('video de-acquisition failed')
 
         # release camera
         self._iq.put(RELEASE)
         result = self._oq.get()
         if not result:
-            logging.debug('Camera de-initialization failed.')
+            logging.debug('camera de-initialization failed')
 
         # destroy the child process
         self._destroy()

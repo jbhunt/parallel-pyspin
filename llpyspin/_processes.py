@@ -8,7 +8,7 @@ import multiprocessing as mp
 from ._constants import *
 
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
 
 # try to import the PySpin package
 try:
@@ -36,6 +36,8 @@ class CameraBase():
         # private attributes
         self._started         = mp.Value('i',0) # this flag controls the main loop in the run method
         self._acquiring       = mp.Value('i',0) # this flag controls the acquisition loop in the _start method
+        self._lock            = mp.Lock()       # acquisition lock
+        self._locked          = False           # acquisition lock state
         self._iq              = mp.Queue()      # input queue
         self._oq              = mp.Queue()      # output queue
 
@@ -46,7 +48,7 @@ class CameraBase():
         self._roi             = None
 
         # maps the command signatures to the appropriate class method
-        self._map = {
+        self._fmap = {
             INITIALIZE : self._initialize,
             RELEASE    : self._release,
             START      : self._start,
@@ -72,6 +74,41 @@ class CameraBase():
     @acquiring.setter
     def acquiring(self, value):
         self._acquiring.value = 1 if value == True else False
+
+    # acquisition lock state
+    @property
+    def locked(self):
+        return self._locked
+
+    @locked.setter
+    def locked(self, value):
+
+        # engage the lock
+        if value == True:
+            if self.locked:
+                logging.debug('acquisition lock is already engaged')
+                return
+            result = self._lock.acquire(block=False)
+            if result:
+                logging.debug('acquisition lock engaged')
+                self._locked = True
+            else:
+                logging.debug('failed to engage acquisition lock')
+
+        # disengage the lock
+        elif value == False:
+            if not self.locked:
+                logging.debug('acquisition lock is not engaged')
+                return
+            try:
+                self._lock.release()
+                logging.debug('acquisition lock disengaged')
+                self._locked = False
+            except ValueError:
+                logging.debug('failed to disengage acquisition lock')
+
+        else:
+            raise ValueError('invalid acquisition lock state')
 
     def _run(self):
         """
@@ -124,7 +161,7 @@ class CameraBase():
                 continue
 
             # call the appropriate class method
-            result = self._map[item](camera)
+            result = self._fmap[item](camera)
 
             # return the result of the call to the main process
             self._oq.put(result)
@@ -167,9 +204,7 @@ class CameraBase():
         destroy the child process
         """
 
-        try:
-            assert self.child is not None
-        except AssertionError:
+        if self.child is None:
             logging.warning('no existing child process')
             return
 
@@ -191,6 +226,7 @@ class CameraBase():
         # join the child process
         try:
             self.child.join(1) # 1" timeout
+
         except mp.TimeoutError:
             logging.warning('the child process is deadlocked')
             self.child.terminate()

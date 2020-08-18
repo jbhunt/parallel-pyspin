@@ -27,6 +27,8 @@ class AcquisitionProperty(object):
             doc = fget.__doc__
         self.__doc__ = doc
 
+        self.paused = False
+
     def __get__(self, obj, objtype=None):
         if obj is None:
             return self
@@ -34,12 +36,9 @@ class AcquisitionProperty(object):
             raise AttributeError("unreadable attribute")
         return self.fget(obj)
 
-    def pause(self, obj):
+    def _pause(self, obj):
         """
         """
-
-        if not obj.acquiring:
-            return False
 
         logging.debug('pausing acquisition')
 
@@ -55,13 +54,15 @@ class AcquisitionProperty(object):
         if not result:
             logging.debug('video de-acquisition failed')
 
-        return True
+        self.paused = True
 
-    def resume(self, obj):
+        return
+
+    def _resume(self, obj):
         """
         """
 
-        logging.debug('resuming acquisition.')
+        logging.debug('resuming acquisition')
 
         # set the acquisition flag to True
         obj.acquiring = True
@@ -69,32 +70,7 @@ class AcquisitionProperty(object):
         # start the acquisition
         obj._iq.put(START)
 
-        return
-
-    def lock(self, obj):
-        """
-        """
-
-        if hasattr(obj,'_lock'):
-            result = obj._lock.acquire(block=False)
-            if not result:
-                raise Exception('acquisition lock is engaged')
-
-        return
-
-    def unlock(self, obj):
-        """
-        """
-
-        if hasattr(obj,'_lock'):
-
-            try:
-                obj._lock.release()
-
-            # this happens if the lock is released manually in the property's setter method
-            except ValueError:
-                logging.debug('acquisition lock released more than once')
-                pass
+        self.paused = False
 
         return
 
@@ -105,21 +81,20 @@ class AcquisitionProperty(object):
         if self.fset is None:
             raise AttributeError("can't set attribute")
 
-        # acquire acquisition lock
-        self.lock(obj)
+        # check acquisition lock
+        if obj.locked:
+            raise Exception('acquisition lock is engaged')
 
-        # pause ongoing acquisition
-        restart = self.pause(obj)
+        # pause acquisition
+        if obj.acquiring:
+            self._pause(obj)
 
         # call the fset method
         self.fset(obj, value)
 
-        # restart acquisition
-        if restart:
-            self.resume(obj)
-
-        # release acquisition lock
-        self.unlock(obj)
+        # resume acquisition
+        if self.paused:
+            self._resume(obj)
 
         return
 
@@ -236,15 +211,6 @@ class PropertiesMixin(object):
             return
 
         self._binsize = value
-
-        # NOTE : to reset the ROI parameters the acquisition lock needs to be
-        #        released here because the lock is acquired inside the
-        #        descriptor's __set__ method to avoid changing the value of
-        #        properties during video acquisition (see the descriptor's class
-        #        definition)
-
-        if hasattr(self,'_lock'):
-            self._lock.release()
 
         # reset the ROI as changing the binsize invalidates the ROI parameters
         self.roi = None

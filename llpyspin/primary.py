@@ -1,5 +1,6 @@
 # imports
 import queue
+import ctypes
 import logging
 import numpy as np
 import multiprocessing as mp
@@ -10,8 +11,11 @@ from ._spinnaker  import SpinnakerMixin, spinnaker
 from ._properties import PropertiesMixin
 from ._constants  import *
 
+#
+from . import recording
+
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
 
 # try to import the PySpin package
 try:
@@ -30,24 +34,54 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         super().__init__(device)
 
         # private attributes
-        self._lock      = mp.Lock()        # acquisition lock
-        self._trigger   = mp.Event()
-        self._nickname  = 'primary-camera' # camera nickname
+        self._trigger  = mp.Event()
+        self._filename = mp.Value(ctypes.c_char_p, None)
+        self._nickname = 'primary-camera' # camera nickname
 
-        # prime the camera
-        self.prime()
+        # intitialize the child process
+        self._create()
+
+        # attempt to initialize the camera
+        self._iq.put(INITIALIZE)
+        result = self._oq.get()
+        if not result:
+            logging.error(f'camera initialization failed')
+            return
 
         return
 
     ### special methods ###
 
     @spinnaker
+    def _initialize(self, camera):
+        """
+        """
+
+        # init the camera
+        camera.Init()
+
+        # pixel format
+        camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
+
+        # acquisition mode
+        camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
+
+        # stream buffer handling mode
+        camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+
+        # disable auto exposure
+        camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+
+        return
+
+    @spinnaker
     def _start(self, camera):
         """
         """
 
-        # engage the acquisition lock
-        self._lock.acquire()
+        # prepare for the recording
+        args = self._iq.get()
+        writer = recording.VideoWriter(*args)
 
         # create a counter that tracks the onset sensor exposure
         camera.CounterSelector.SetValue(PySpin.CounterSelector_Counter0)
@@ -88,11 +122,14 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
                 # convert the image
                 frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
 
+                # save the result
+                writer.write(image)
+
             # release the image
             image.Release()
 
-        # release the acquisition lock
-        self._lock.release()
+        #
+        writer.close()
 
         return
 
@@ -120,9 +157,14 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
     ### public methods ###
 
-    def prime(self):
+    def prime(self, filename):
         """
-        prime the camera for video acquisition
+        prime the camera for video recording
+
+        keywords
+        --------
+        filename : str
+            a filename for the video (includeing the ".avi" file extension)
         """
 
         # make sure the camera isn't started
@@ -130,18 +172,10 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
             logging.info('camera is already primed')
             return
 
-        # intitialize the child process
-        if self.child is None:
-            self._create()
+        if not filename.endswith('.avi'):
+            raise ValueError('filename string must end with ".avi" extension')
 
-        # attempt to initialize the camera
-        self._iq.put(INITIALIZE)
-        result = self._oq.get()
-        if not result:
-            logging.error(f'camera initialization failed')
-            return
-
-        # set the acquisition properties
+        #
         self._setall()
 
         # set the acquiring flag to 1
@@ -149,6 +183,16 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
         # send command to start acquisition
         self._iq.put(START)
+
+        # overwrite the current filename
+        self.filename = filename
+
+        #
+        args = [filename, None, self.framerate, (self.roi[2:])]
+        self._iq.put(args)
+
+        # engage the acquisition lock
+        self.locked = True
 
         return
 
@@ -159,7 +203,7 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
         # start acquisition if necessary
         if not self.primed:
-            logging.warning('camera is not primed')
+            logging.info('camera is not primed')
             return
 
         self._trigger.set()
@@ -171,12 +215,12 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         stop video acquisition
         """
 
-        logging.info('stopping video acquisition')
-
         # check that the camera is acquiring
         if not self.acquiring:
             logging.info('video acquisition is already stopped')
             return
+
+        logging.info('stopping video acquisition')
 
         # break out of the acquisition loop
         self.acquiring = False
@@ -195,6 +239,9 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         result = self._oq.get()
         if not result:
             logging.warning('video de-acquisition failed')
+
+        # release the acquisition lock
+        self.locked = False
 
         return
 
@@ -227,6 +274,17 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
     @property
     def triggered(self):
         return True if self._trigger.is_set() else False
+
+    # filename
+    @property
+    def filename(self):
+        return self._filename.value.decode()
+
+    @filename.setter
+    def filename(self, value):
+        if type(value) is not str:
+            raise ValueError('filename must be a string')
+        self._filename.value = value.encode()
 
     # nickname
     @property

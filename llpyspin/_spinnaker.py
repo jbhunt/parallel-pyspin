@@ -5,7 +5,7 @@ import logging
 from ._constants import *
 
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
 
 # try to import the PySpin package
 try:
@@ -29,6 +29,10 @@ def spinnaker(method):
         except PropertyValueError as error:
             logging.debug(error.message)
             result = False
+
+        # except:
+        #     logging.debug('undefined error raised by a spinnaker method')
+        #     result = False
 
         return result
 

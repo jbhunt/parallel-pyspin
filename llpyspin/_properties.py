@@ -12,7 +12,6 @@ class AcquisitionProperty(object):
     to handle intermitent interruption of acquisition during changes in property
     values
 
-
     references
     ----------
     [1] https://docs.python.org/3/howto/descriptor.html#properties
@@ -27,7 +26,10 @@ class AcquisitionProperty(object):
             doc = fget.__doc__
         self.__doc__ = doc
 
-        self.paused = False
+        # internal flag that records the state of camera acquisition
+        self._paused = False
+
+        return
 
     def __get__(self, obj, objtype=None):
         if obj is None:
@@ -54,7 +56,7 @@ class AcquisitionProperty(object):
         if not result:
             logging.debug('video de-acquisition failed')
 
-        self.paused = True
+        self._paused = True
 
         return
 
@@ -70,7 +72,7 @@ class AcquisitionProperty(object):
         # start the acquisition
         obj._iq.put(START)
 
-        self.paused = False
+        self._paused = False
 
         return
 
@@ -93,7 +95,7 @@ class AcquisitionProperty(object):
         self.fset(obj, value)
 
         # resume acquisition
-        if self.paused:
+        if self._paused:
             self._resume(obj)
 
         return

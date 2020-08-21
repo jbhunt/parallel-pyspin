@@ -1,49 +1,14 @@
 import types
 import logging
 
-# constants
-from ._constants import *
-
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # try to import the PySpin package
 try:
     import PySpin
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
-
-# decorator that handles errors
-def spinnaker(method):
-
-    def fwrap(obj, camera):
-
-        try:
-            method(obj, camera)
-            result = True
-
-        except PySpin.SpinnakerException:
-            logging.debug(f"a PySpin exception was raised by the '{method.__name__}' method")
-            result = False
-
-        except PropertyValueError as error:
-            logging.debug(error.message)
-            result = False
-
-        # except:
-        #     logging.debug('undefined error raised by a spinnaker method')
-        #     result = False
-
-        return result
-
-    return fwrap
-
-class PropertyValueError(Exception):
-    """error raised for failed attempts to set the value of an acquisition property"""
-
-    def __init__(self, property, value):
-        super().__init__()
-        self.message = f'{value} is an invalid value for {property}'
 
 class SpinnakerMixin(object):
     """
@@ -57,11 +22,9 @@ class SpinnakerMixin(object):
     must instead be created within the scope of the target function. In an
     effort to make the code more readable I created these special methods which
     are called from within the target function of the child process and passed
-    the camera object as an argument. The decorator takes each method, calls it,
-    and returns the result of the call.
+    the camera object as an argument.
     """
 
-    @spinnaker
     def _initialize(self, camera):
         """
         initialize the camera
@@ -84,58 +47,84 @@ class SpinnakerMixin(object):
 
         return
 
-    @spinnaker
     def _get(self, camera):
         """
         retreive the value of an acquisition property
         """
 
-        property = self._iq.get()
+        (property, feature) = self._iq.get()
 
-        if property == FRAMERATE_PROPERTY_ID:
-            value = camera.AcquisitionFrameRate.GetMax()
+        if property == 'framerate':
 
-        if property == WIDTH_PROPERTY_ID:
-            value = camera.Width.GetMax()
+            if feature == 'maximum':
+                value = camera.AcquisitionFrameRate.GetMax()
+            if feature == 'minimum':
+                value = camera.AcquisitionFrameRate.GetMax()
+            if feature == 'current':
+                value = camera.AcquisitionFrameRate.GetValue()
 
-        if property == HEIGHT_PROPERTY_ID:
-            value = camera.Height.GetMax()
+        elif property == 'width':
 
+            if feature == 'maximum':
+                value = camera.Width.GetMax()
+            if feature == 'minimum':
+                value = camera.Width.GetMin()
+            if feature == 'current':
+                value = camera.Width.GetValue()
+
+        elif property == 'height':
+
+            if feature == 'maximum':
+                value = camera.Height.GetMax()
+            if feature == 'minimum':
+                value = camera.Height.GetMin()
+            if feature == 'current':
+                value = camera.Height.GetValue()
+
+        elif property == 'offset':
+
+            if feature == 'current':
+                value = (camera.OffsetX.GetValue(), camera.OffsetY.GetValue())
+            if feature == 'maximum':
+                value = (camera.OffsetX.GetMax(), camera.OffsetY.GetMax())
+
+        else:
+            value = None
+
+        # put the requested value in the output queue
         self._oq.put(value)
 
         return
 
-    @spinnaker
     def _set(self, camera):
         """
         set the value of an acquisition property
         """
 
-        # retreive the property id and target value
-        property = self._iq.get()
-        value    = self._iq.get()
+        # retreive the property id and requested value
+        (property, value) = self._iq.get()
 
         # framerate
-        if property == FRAMERATE_PROPERTY_ID:
+        if property == 'framerate':
 
             # test the requested value
             min  = camera.AcquisitionFrameRate.GetMin()
             max  = camera.AcquisitionFrameRate.GetMax()
             if not min <= value <= max:
-                raise PropertyValueError('framerate', value)
+                raise PySpin.SpinnakerException()
 
             # test passed
             camera.AcquisitionFrameRateEnable.SetValue(True)
             camera.AcquisitionFrameRate.SetValue(value)
 
         # exposure
-        if property == EXPOSURE_PROPERTY_ID:
+        if property == 'exposure':
 
             #
             min = camera.ExposureTime.GetMin()
             max = camera.ExposureTime.GetMax()
             if not min <= value <= max:
-                raise PropertyValueError('exposure', value)
+                raise PySpin.SpinnakerException()
 
             #
             camera.AcquisitionFrameRateEnable.SetValue(False)
@@ -143,13 +132,13 @@ class SpinnakerMixin(object):
             camera.AcquisitionFrameRateEnable.SetValue(True)
 
         # binsize
-        if property == BINSIZE_PROPERTY_ID:
+        if property == 'binsize':
 
             #
             min = camera.BinningVertical.GetMin()
             max = camera.BinningVertical.GetMax()
             if not min <= value <= max:
-                raise PropertyValueError('binsize',  value)
+                raise PySpin.SpinnakerException()
 
             # TODO : check that the value is a valid increment of each bin axis
 
@@ -158,56 +147,44 @@ class SpinnakerMixin(object):
             camera.BinningVertical.SetValue(value)
 
         # region of interest
-        if property == ROI_PROPERTY_ID:
+        if property == 'roi':
 
             # unpack the ROI parameters
             (y, x, h, w) = value # TODO : change the order of parameters to x, y, w, h
 
-            # test height
-            min = camera.Height.GetMin()
-            max = camera.Height.GetMax()
-            if not min <= h <= max:
-                raise PropertyValueError('height', h)
+            #
+            test1 = (x + w) <= (camera.Width.GetMax() + camera.OffsetX.GetValue())
+            test2 = (y + h) <= (camera.Height.GetMax() + camera.OffsetY.GetValue())
+            test3 = (x % camera.OffsetX.GetInc() == 0) and (y % camera.OffsetY.GetInc() == 0)
+            if False in [test1, test2, test3]:
+                raise PySpin.SpinnakerException()
 
-            # test width
-            min = camera.Width.GetMin()
-            max = camera.Width.GetMax()
-            if not min <= w <= max:
-                raise PropertyValueError('width', w)
+            # set the new roi
+            camera.Height.SetValue(h)
+            camera.Width.SetValue(w)
+            camera.OffsetY.SetValue(y)
+            camera.OffsetX.SetValue(x)
 
-            # set the new height and width
+        # shape of the video frame
+        if property == 'shape':
+            (h, w) = value
             camera.Height.SetValue(h)
             camera.Width.SetValue(w)
 
-            # test x-offset
-            min = camera.OffsetX.GetMin()
-            max = camera.OffsetX.GetMax()
-            inc = camera.OffsetX.GetInc()
-            if not min <= x <= max or x % inc != 0:
-                raise PropertyValueError('x-offset', x)
-
-            # test y-offset
-            min = camera.OffsetY.GetMin()
-            max = camera.OffsetY.GetMax()
-            inc = camera.OffsetY.GetInc()
-            if not min <= y <= max or y % inc != 0:
-                raise PropertyValueError('y-offset', y)
-
-            # all tests passed
+        # offset of the video frame
+        if property == 'offset':
+            (y, x) = value
             camera.OffsetY.SetValue(y)
             camera.OffsetX.SetValue(x)
 
         return
 
-    @spinnaker
     def _start(self, camera):
         camera.BeginAcquisition()
 
-    @spinnaker
     def _stop(self, camera):
         camera.EndAcquisition()
 
-    @spinnaker
     def _release(self, camera):
         """
         release the camera

@@ -6,9 +6,8 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import CameraBase
-from ._spinnaker  import SpinnakerMixin, spinnaker
+from ._spinnaker  import SpinnakerMixin
 from ._properties import PropertiesMixin, AcquisitionProperty
-from ._constants  import *
 
 #
 from . import recording
@@ -37,32 +36,25 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         self._filename = mp.Value(ctypes.c_char_p, None)
         self._nickname = '<nickname>'
 
+        logging.info('creating secondary camera')
+
         # create the child process
-        self._create()
+        self._spawn()
 
         # attempt to initialize the camera
-        self._iq.put(INITIALIZE)
-        result = self._oq.get()
-        if not result:
-            logging.error(f'camera initialization failed')
+        self._iq.put('initialize')
+        if self._result == False:
+            logging.error('camera initialization failed')
             return
 
-        return
-
-    # overwrite the '_setall' method
-
-    def _setall(self):
-        """
-        """
-
-        self.binsize = self._binsize
-        self.roi     = self._roi
+        self.framerate = 30
+        self.exposure  = 1500
+        self.binsize   = None
 
         return
 
     ### private methods ###
 
-    @spinnaker
     def _start(self, camera):
         """
         """
@@ -80,11 +72,8 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         camera.BeginAcquisition()
 
         # main loop
-        while self.acquiring:
+        while self.acquiring == True:
 
-
-            # NOTE
-            # ----
             # There's a 3 second timeout for the call to GetNextImage to prevent
             # the secondary camera from blocking when video acquisition is
             # aborted before the primary camera is triggered (see below).
@@ -110,7 +99,6 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
         return
 
-    @spinnaker
     def _stop(self, camera):
         """
         stop acquisition
@@ -134,15 +122,12 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # check that the camera isn't acquiring
-        if self.primed:
+        if self.primed == True:
             logging.info('camera is already primed')
             return
 
         if not filename.endswith('.avi'):
             raise ValueError('filename string must end with ".avi" extension')
-
-        # set the acquisition properties
-        self._setall()
 
         # overwrite the current filename
         self.filename = filename
@@ -151,7 +136,7 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         self.acquiring = True
 
         # send the acquisition command
-        self._iq.put(START)
+        self._iq.put('start')
 
         #
         args = [filename, None, self.framerate, (self.roi[2:])]
@@ -168,7 +153,7 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # check that the camera is acquiring
-        if not self.primed:
+        if self.acquiring == False:
             logging.info('video acquisition is already stopped')
             return
 
@@ -176,14 +161,12 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
-        result = self._oq.get()
-        if not result:
+        if self._result == False:
             logging.debug('video acquisition failed')
 
         # stop acquisition
-        self._iq.put(STOP)
-        result = self._oq.get()
-        if not result:
+        self._iq.put('stop')
+        if self._result == False:
             logging.debug('video de-acquisition failed')
 
         # release acquisition lock
@@ -196,19 +179,22 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         release the camera
         """
 
+        if self.started == False:
+            logging.info('camera already released')
+            return
+
         # stop acquisition if acquiring
-        if self.primed:
+        if self.primed == True:
             logging.info('stopping video acquisition')
             self.stop()
 
         #
-        self._iq.put(RELEASE)
-        result = self._oq.get()
-        if not result:
-            logging.warning('camera de-initialization failed')
+        self._iq.put('release')
+        if self._result == False:
+            logging.debug('camera de-initialization failed')
 
         # stop and join the child process
-        self._destroy()
+        self._kill()
 
         return
 
@@ -234,27 +220,25 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
     # camera ready state
     @property
     def primed(self):
-        self._primed = True if self.child is not None and self.acquiring == 1 else False
+        self._primed = True if self._child is not None and self.acquiring == 1 else False
         return self._primed
 
     # overwrite the framerate and exposure properties
 
     @AcquisitionProperty
     def framerate(self):
-        logging.info('framerate is set by the primary camera')
         return self._framerate
 
     @framerate.setter
     def framerate(self, value):
-        logging.info('framerate is set by the primary camera')
+        logging.debug('framerate is set by the primary camera')
         self._framerate = value
 
     @AcquisitionProperty
     def exposure(self):
-        logging.info('exposure is set by the primary camera')
         return self._exposure
 
     @exposure.setter
     def exposure(self, value):
-        logging.info('exposure is set by the primary camera')
+        logging.debug('exposure is set by the primary camera')
         self._exposure = value

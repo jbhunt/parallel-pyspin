@@ -4,17 +4,29 @@ import logging
 import numpy as np
 import multiprocessing as mp
 
-# import all constants
-from ._constants import *
-
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # try to import the PySpin package
 try:
     import PySpin
 except ModuleNotFoundError:
     logging.error('PySpin import failed.')
+
+class SubprocessError(Exception):
+    """error raised for failed attempt to create child process"""
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+        return
+
+class PropertyError(Exception):
+    """error raised for failed attempts to set the value of an acquisition property"""
+
+    def __init__(self, property, value):
+        super().__init__()
+        self.message = f'{value} is not a valid value for {property}'
+        return
 
 class CameraBase():
     """
@@ -31,33 +43,212 @@ class CameraBase():
         """
 
         self.device = device
-        self.child  = None
 
         # private attributes
+
+        self._child           = None            # attribute which holds the reference to the child process
+
         self._started         = mp.Value('i',0) # this flag controls the main loop in the run method
         self._acquiring       = mp.Value('i',0) # this flag controls the acquisition loop in the _start method
+
         self._lock            = mp.Lock()       # acquisition lock
         self._locked          = False           # acquisition lock state
+
         self._iq              = mp.Queue()      # input queue
         self._oq              = mp.Queue()      # output queue
 
-        # acquisition properties
-        self._framerate       = FRAMERATE_DEFAULT_VALUE
-        self._exposure        = EXPOSURE_DEFAULT_VALUE
-        self._binsize         = BINSIZE_DEFAULT_VALUE
-        self._roi             = None
+        # acquisition property private values
+        self._framerate = None
+        self._exposure  = None
+        self._binsize   = None
+        self._roi       = None
 
-        # maps the command signatures to the appropriate class method
-        self._fmap = {
-            INITIALIZE : self._initialize,
-            RELEASE    : self._release,
-            START      : self._start,
-            STOP       : self._stop,
-            SET        : self._set,
-            GET        : self._get,
-        }
+        # alternative naming
+        # self._fps             = None
+        # self._bin             = None
+        # self._exp             = None
 
         return
+
+    # TODO : the more I think about this, the more I think the child process
+    #        should be made into its own class
+
+    def _run(self):
+        """
+        target function for the child process
+
+        notes
+        -----
+        Do not make logging calls (e.g., 'logging.info(<some informative message>)')
+        within this method. Writing to stdout is not a process-safe operation.
+        """
+
+        try:
+
+            # create instances of the system and cameras list
+            system  = PySpin.System.GetInstance()
+            cameras = system.GetCameras()
+
+            #
+            assert len(cameras) != 0
+
+            # instantiate the camera
+            if type(self.device) == str:
+                camera = cameras.GetBySerial(self.device)
+
+            if type(self.device) == int:
+                camera = cameras.GetByIndex(self.device)
+
+            # send the result back
+            self._oq.put(True)
+
+        except:
+
+            # send the result back
+            self._oq.put(False)
+
+            return
+
+        # set the started flag to True
+        self.started = True
+
+        # main loop
+        while self.started:
+
+            # listen for method calls from the main process
+            try:
+                item = self._iq.get(block=False)
+
+            except queue.Empty:
+                continue
+
+            # call the appropriate method
+            try:
+                method = self.__getattribute__('_' + item)
+                method(camera)
+                self._oq.put(True)
+
+            except PySpin.SpinnakerException:
+                self._oq.put(False)
+
+            continue
+
+        # clean up
+        try:
+            del camera
+        except NameError:
+            passed
+        cameras.Clear()
+        del cameras
+        system.ReleaseInstance()
+
+        return
+
+    def _spawn(self):
+        """
+        spawn the child process
+        """
+
+        if self._child != None:
+            logging.debug('active child process detected')
+            return
+
+        logging.debug('creating the child process')
+
+        # create the child process
+        self._child = mp.Process(target=self._run,args=())
+
+        # make the child a daemon process
+        self._child.daemon = True
+
+        # start the child process
+        self._child.start()
+
+        # the child will send back the result of the fork
+        result = self._oq.get()
+        if result == False:
+            raise SubprocessError('failed to spawn child process')
+
+        return
+
+    def _kill(self):
+        """
+        kill the child process
+        """
+
+        if self._child == None:
+            logging.debug('no active child process detected')
+            return
+
+        logging.debug('destroying the child process')
+
+        # break out of the main loop in the child process
+        self.started = False
+
+        # empty out the queues - if the are not empty it can cause the call to the join method to hang
+        if self._iq.qsize() != 0 or self._oq.qsize() != 0:
+            logging.debug('emptying input and output queues')
+            while not self._iq.empty(): item = self._iq.get()
+            while not self._oq.empty(): item = self._oq.get()
+
+        # join the child process
+        self._child.join(timeout=3)
+        if self._child.is_alive():
+            logging.error('child process is deadlocked')
+            self._child.terminate()
+            self._child.join()
+
+        # delete the reference to the child process
+        self._child = None
+
+        return
+
+    # NOTE : this method is not yet implemented
+    # TODO : implement this method
+
+    def _send(self, item, caller='parent', *items):
+        """
+        put one or more items in the input queue
+
+        keywords
+        --------
+        caller : str
+            identity of the process (i.e., parent or child)
+
+        notes
+        -----
+        The caller kwarg specifies which queue to put the item(s) in.
+        """
+
+        if caller == 'parent':
+            q = self._iq
+        elif caller == 'child':
+            q = self._oq
+        else:
+            raise ValueError('invalid caller-ID')
+
+        q.put(item)
+
+        # option to send follow up data
+        if len(items) != 0:
+            q.put(items)
+
+        return
+
+    # retreive the result of a call from the output queue
+    @property
+    def _result(self):
+
+        try:
+            result = self._oq.get(block=True, timeout=5)
+
+        except mp.TimeoutError:
+            raise SubprocessError('failed to retreive result from output queue')
+
+        except queue.Empty:
+            raise SubprocessError('failed to retreive result from output queue')
+
+        return result
 
     # started flag
     @property
@@ -85,7 +276,7 @@ class CameraBase():
 
         # engage the lock
         if value == True:
-            if self.locked:
+            if self._locked:
                 logging.debug('acquisition lock is already engaged')
                 return
             result = self._lock.acquire(block=False)
@@ -97,7 +288,7 @@ class CameraBase():
 
         # disengage the lock
         elif value == False:
-            if not self.locked:
+            if not self._locked:
                 logging.debug('acquisition lock is not engaged')
                 return
             try:
@@ -109,130 +300,3 @@ class CameraBase():
 
         else:
             raise ValueError('invalid acquisition lock state')
-
-    def _run(self):
-        """
-        target function for the child process
-
-        notes
-        -----
-        Do not make logging calls (e.g., 'logging.info(<some informative message>)')
-        within this method. Writing to stdout is not a process-safe operation.
-        """
-
-        # create instances of the system and cameras
-        system  = PySpin.System.GetInstance()
-        cameras = system.GetCameras()
-
-        # assert at least one camera
-        if len(cameras) == 0:
-            raise Exception('no cameras detected')
-
-        # instantiate the camera
-        try:
-
-            if type(self.device) == str:
-                camera = cameras.GetBySerial(self.device)
-
-            if type(self.device) == int:
-                camera = cameras.GetByIndex(self.device)
-
-            if type(self.device) not in [str,int]:
-                cameras.Clear()
-                system.ReleaseInstance()
-                raise TypeError(f"The 'device' argument must be a string or integer but is {type(self.device)}.")
-
-        except PySpin.SpinnakerException:
-            cameras.Clear()
-            system.ReleaseInstance()
-            raise Exception('unable to create an instance of the camera')
-
-        # set the started flag to True
-        self.started = True
-
-        # main loop
-        while self.started:
-
-            # listen for method calls from the main process
-            try:
-                item = self._iq.get(block=False)
-
-            except queue.Empty:
-                continue
-
-            # call the appropriate class method
-            result = self._fmap[item](camera)
-
-            # return the result of the call to the main process
-            self._oq.put(result)
-
-            continue
-
-        # clean up
-        try:
-            del camera
-        except NameError:
-            pass
-        cameras.Clear()
-        system.ReleaseInstance()
-
-        return
-
-    def _create(self):
-        """
-        create the child process
-        """
-
-        try:
-            assert self.child is None
-        except AssertionError:
-            logging.warning("A child process already exists. To create a new instance call the '_destroy' method first.")
-            return
-
-        logging.debug('Creating the child process.')
-
-        # create the child process
-        self.child = mp.Process(target=self._run,args=())
-
-        # start he child process
-        self.child.start()
-
-        return
-
-    def _destroy(self):
-        """
-        destroy the child process
-        """
-
-        if self.child is None:
-            logging.warning('no existing child process')
-            return
-
-        logging.debug('destroying the child process')
-
-        # break out of the main loop in the child process
-        self.started = False
-
-        # empty out the queues - if the are not empty it can cause the call to the join method to hang
-        if self._iq.qsize() != 0 or self._oq.qsize() != 0:
-            logging.info('emptying out input and output queues')
-            while not self._iq.empty():
-                item = self._iq.get()
-                logging.info(f"{item} removed from the input queue")
-            while not self._oq.empty():
-                item = self._oq.get()
-                logging.info(f"{item} removed from the output queue")
-
-        # join the child process
-        try:
-            self.child.join(1) # 1" timeout
-
-        except mp.TimeoutError:
-            logging.warning('the child process is deadlocked')
-            self.child.terminate()
-            self.child.join()
-
-        # delete the reference to the child process
-        self.child = None
-
-        return

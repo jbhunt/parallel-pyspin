@@ -7,15 +7,14 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import CameraBase
-from ._spinnaker  import SpinnakerMixin, spinnaker
+from ._spinnaker  import SpinnakerMixin
 from ._properties import PropertiesMixin
-from ._constants  import *
 
 #
 from . import recording
 
 # logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.DEBUG)
+logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # try to import the PySpin package
 try:
@@ -38,21 +37,25 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         self._filename = mp.Value(ctypes.c_char_p, None)
         self._nickname = 'primary-camera' # camera nickname
 
-        # intitialize the child process
-        self._create()
+        logging.info('creating primary camera')
+
+        # spawn the child process
+        self._spawn()
 
         # attempt to initialize the camera
-        self._iq.put(INITIALIZE)
-        result = self._oq.get()
-        if not result:
+        self._iq.put('initialize')
+        if self._result == False:
             logging.error(f'camera initialization failed')
             return
 
+        self.framerate = None
+        self.exposure  = None
+        self.binsize   = None
+
         return
 
-    ### special methods ###
+    ### private methods ###
 
-    @spinnaker
     def _initialize(self, camera):
         """
         """
@@ -74,7 +77,6 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
         return
 
-    @spinnaker
     def _start(self, camera):
         """
         """
@@ -133,7 +135,6 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
         return
 
-    @spinnaker
     def _stop(self, camera):
         """
         stop acquisition
@@ -168,21 +169,18 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # make sure the camera isn't started
-        if self.primed is True:
+        if self.primed == True:
             logging.info('camera is already primed')
             return
 
         if not filename.endswith('.avi'):
             raise ValueError('filename string must end with ".avi" extension')
 
-        #
-        self._setall()
-
         # set the acquiring flag to 1
         self.acquiring = True
 
         # send command to start acquisition
-        self._iq.put(START)
+        self._iq.put('start')
 
         # overwrite the current filename
         self.filename = filename
@@ -202,7 +200,7 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # start acquisition if necessary
-        if not self.primed:
+        if self.primed == False:
             logging.info('camera is not primed')
             return
 
@@ -216,7 +214,7 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # check that the camera is acquiring
-        if not self.acquiring:
+        if self.acquiring == False:
             logging.info('video acquisition is already stopped')
             return
 
@@ -230,14 +228,12 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
             self._trigger.set() # release the trigger
 
         # retreive the result (sent after exiting the acquisition loop)
-        result = self._oq.get()
-        if not result:
+        if self._result == False:
             logging.warning('video acquisition failed')
 
         # stop acquisition
-        self._iq.put(STOP)
-        result = self._oq.get()
-        if not result:
+        self._iq.put('stop')
+        if self._result == False:
             logging.warning('video de-acquisition failed')
 
         # release the acquisition lock
@@ -251,24 +247,23 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # stop acquisition if acquiring
-        if self.primed:
+        if self.primed == True:
             self.stop()
 
         #
-        self._iq.put(RELEASE)
-        result = self._oq.get()
-        if not result:
+        self._iq.put('release')
+        if self._result == False:
             logging.warning('camera de-initialization failed')
 
         # stop and join the child process
-        self._destroy()
+        self._kill()
 
         return
 
     # camera ready state
     @property
     def primed(self):
-        return True if self.child is not None and self.acquiring == 1 else False
+        return True if self._child is not None and self.acquiring == 1 else False
 
     # camera trigger state
     @property

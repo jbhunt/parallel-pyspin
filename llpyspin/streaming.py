@@ -5,9 +5,8 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import CameraBase
-from ._spinnaker  import SpinnakerMixin, spinnaker
+from ._spinnaker  import SpinnakerMixin
 from ._properties import PropertiesMixin
-from ._constants  import *
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -37,7 +36,6 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
 
         return
 
-    @spinnaker
     def _start(self, camera):
         """
         start acquisition
@@ -47,7 +45,7 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         camera.BeginAcquisition()
 
         # main acquisition loop
-        while self._acquiring.value:
+        while self.acquiring:
 
             image = camera.GetNextImage(1000)
 
@@ -72,7 +70,9 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         """
         """
 
-        result = True if self.child is not None and self.acquiring is True else False
+        # TODO : figure out if I really need to check the first condition
+
+        result = True if self._child != None and self.acquiring == True else False
 
         return result
 
@@ -81,33 +81,32 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         open the stream
         """
 
-        # assert that the stream is closed
-        try:
-            assert self.isOpened() == False
-        except AssertionError:
-            logging.info('The video stream is already open.')
+        #
+        if self.acquiring:
+            logging.info('video stream is already open')
             return
 
-        logging.info('Opening the video stream.')
+        logging.info('opening the video stream')
 
-        # initialize the child process
-        self._create()
+        # spawn the child process
+        self._spawn()
 
-        # attempt to initialize the camera
-        self._iq.put(INITIALIZE)
-        result = self._oq.get()
-        if not result:
+        # initialize the camera
+        self._iq.put('initialize')
+        if self._result == False:
             logging.debug(f'camera initialization failed')
             self._destroy()
 
         # set all properties to their default values
-        self._setall()
+        self.framerate = None
+        self.exposure  = None
+        self.binsize   = None # this will also set the roi
 
         # set the acquiring flag
         self.acquiring = True
 
         # start the video acquisition
-        self._iq.put(START)
+        self._iq.put('start')
 
         return
 
@@ -115,34 +114,31 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         """
         """
 
-        if self.isOpened() == False:
-            logging.info("The video stream is closed,")
+        if not self.acquiring:
+            logging.info('video stream is closed')
             return
 
-        logging.info('Releasing the video stream.')
+        logging.info('releasing the video stream')
 
         # break out of the acquisition loop
         self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
-        result = self._oq.get()
-        if not result:
+        if self._result == False:
             logging.debug('video acquisition failed')
 
         # stop acquisition
-        self._iq.put(STOP)
-        result = self._oq.get()
-        if not result:
+        self._iq.put('stop')
+        if self._result == False:
             logging.debug('video de-acquisition failed')
 
         # release camera
-        self._iq.put(RELEASE)
-        result = self._oq.get()
-        if not result:
+        self._iq.put('release')
+        if self._result == False:
             logging.debug('camera de-initialization failed')
 
-        # destroy the child process
-        self._destroy()
+        # kill the child process
+        self._kill()
 
         return
 
@@ -151,9 +147,8 @@ class VideoStream(CameraBase, SpinnakerMixin, PropertiesMixin):
         get the most recently acquired image
         """
 
-        # check that the stream is open
-        if self.isOpened() == False:
-            logging.info('The stream is closed.')
+        if not self.acquiring:
+            logging.info('stream is closed')
             return (False, None)
 
         # the lock blocks if a new image is being written to the image attribute

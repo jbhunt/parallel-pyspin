@@ -8,7 +8,7 @@ with open(requirements,'r') as stream:
 
 setuptools.setup(
     name="parallel-pyspin",
-    version="0.2dev3",
+    version="0.2.dev3",
     author="Joshua Hunt",
     author_email="hunt.brian.joshua@gmail.com",
     description="parallel and synchronous video acqusition with FLIR USB3 cameras",

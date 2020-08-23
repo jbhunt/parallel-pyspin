@@ -13,6 +13,17 @@ parser.add_argument("--memory-limit",help="ubfs memory limit to set",default=120
 parser.add_argument("--default-grub",help="filepath for the grub config file",default='/etc/default/grub')
 args = parser.parse_args()
 
+# make sure the GRUB configu file exists
+if os.path.exists(args.default_grub) == False
+    raise ValueError('unable to locate the GRUB settings file')
+
+# make sure the memory limit is within an acceptable range
+if args.increase_memory_limit == True:
+    try:
+        assert 16 <= args.memory_limit <= 2400
+    except AssertionError as error:
+        raise ValueError('memory limit must be between 16 and 2400 MB')
+
 # collect the libraries
 libraries = list()
 for root, folders, files in os.walk(cwd):
@@ -38,18 +49,6 @@ subprocess.call(['sudo','pip','install',wheel])
 # modify GRUB's config file
 if args.increase_memory_limit:
 
-    try:
-        assert args.memory_limit <= 2000
-    except AssertionError:
-        print("It's not recommended to set the buffer size to greater than 2000 MB. Defaulting to 1200 MB.")
-        args.memory_limit = 1200
-
-    try:
-        assert args.memroy_limit >= 16
-    except AssertionError:
-        print("It's not recommended to set the buffer size to less than 16 MB. Defaulting to 1200 MB.")
-        args.memory_limit = 1200
-
     with open(args.default_grub,'r') as stream:
         lines = stream.readlines()
 
@@ -62,6 +61,8 @@ if args.increase_memory_limit:
     subprocess.call(['sudo','update-grub'])
 
     # reboot
-    answer = input('The computer needs to be rebooted for these changes to take effect. Reboot now? [Y/N]\n')
+    answer = input('The computer needs to be rebooted for these changes to take effect. Reboot now? [Y/N] : ')
     if answer in ['y','Y','yes','Yes']:
         subproces.call(['reboot','now'])
+    else:
+        print('aborting Spinnaker installation ...')

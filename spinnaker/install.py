@@ -70,7 +70,7 @@ if args.increase_memory_limit:
     subprocess.call(['sudo','update-grub'])
 
     # reboot
-    answer = input('The computer needs to be rebooted for these changes to take effect. Reboot now? [Y/N] : ')
+    answer = str(input('The computer needs to be rebooted for these changes to take effect. Reboot now? [Y/N] : '))
     if answer in ['y','Y','yes','Yes']:
         subproces.call(['reboot','now'])
     else:

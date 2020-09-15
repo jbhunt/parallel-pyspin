@@ -104,9 +104,18 @@ class CameraBase():
 
         except:
 
+            # clean-up
+            try:
+                del camera
+            except NameError:
+                pass
+            cameras.Clear()
+            del cameras
+            system.ReleaseInstance()
+
             # send the result back
             self._oq.put(False)
-
+            
             return
 
         # set the started flag to True
@@ -118,6 +127,7 @@ class CameraBase():
             # listen for method calls from the main process
             try:
                 item = self._iq.get(block=False)
+                # print(item)
 
             except queue.Empty:
                 continue
@@ -128,7 +138,8 @@ class CameraBase():
                 method(camera)
                 self._oq.put(True)
 
-            except PySpin.SpinnakerException:
+            # except PySpin.SpinnakerException:
+            except:
                 self._oq.put(False)
 
             continue
@@ -137,7 +148,7 @@ class CameraBase():
         try:
             del camera
         except NameError:
-            passed
+            pass
         cameras.Clear()
         del cameras
         system.ReleaseInstance()
@@ -192,7 +203,7 @@ class CameraBase():
             while not self._oq.empty(): item = self._oq.get()
 
         # join the child process
-        self._child.join(timeout=3)
+        self._child.join(timeout=15)
         if self._child.is_alive():
             logging.error('child process is deadlocked')
             self._child.terminate()
@@ -239,14 +250,16 @@ class CameraBase():
     @property
     def _result(self):
 
-        try:
-            result = self._oq.get(block=True, timeout=5)
+        # try:
+        #     result = self._oq.get(block=True, timeout=5)
 
-        except mp.TimeoutError:
-            raise SubprocessError('failed to retreive result from output queue')
+        # except mp.TimeoutError:
+        #     raise SubprocessError('failed to retreive result from output queue')
 
-        except queue.Empty:
-            raise SubprocessError('failed to retreive result from output queue')
+        # except queue.Empty:
+        #     raise SubprocessError('failed to retreive result from output queue')
+
+        result = self._oq.get()
 
         return result
 

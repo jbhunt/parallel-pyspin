@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 import subprocess
 
@@ -60,7 +61,7 @@ if args.increase_memory_limit:
     	iline = lines.index('GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"\n')
     except ValueError as error:
         print('error reading GRUB config file')
-        return
+        sys.exit()
 
     lines[iline] = 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash usbcore.usbfs_memory_mb={}"\n'.format(args.memory_limit)
 

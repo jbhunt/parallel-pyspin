@@ -59,7 +59,7 @@ class SpinnakerMixin(object):
             if feature == 'maximum':
                 value = camera.AcquisitionFrameRate.GetMax()
             if feature == 'minimum':
-                value = camera.AcquisitionFrameRate.GetMax()
+                value = camera.AcquisitionFrameRate.GetMin()
             if feature == 'current':
                 value = camera.AcquisitionFrameRate.GetValue()
 

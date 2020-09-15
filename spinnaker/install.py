@@ -13,8 +13,11 @@ parser.add_argument("--memory-limit",help="ubfs memory limit to set",default=120
 parser.add_argument("--default-grub",help="filepath for the grub config file",default='/etc/default/grub')
 args = parser.parse_args()
 
+# make sure this is an integer
+args.memory_limit = int(args.memory_limit)
+
 # make sure the GRUB configu file exists
-if os.path.exists(args.default_grub) == False
+if os.path.exists(args.default_grub) == False:
     raise ValueError('unable to locate the GRUB settings file')
 
 # make sure the memory limit is within an acceptable range
@@ -52,7 +55,13 @@ if args.increase_memory_limit:
     with open(args.default_grub,'r') as stream:
         lines = stream.readlines()
 
-    iline = lines.index('GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"\n')
+    # find the line where the USB device buffer is limited (if it exists)
+    try:
+    	iline = lines.index('GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"\n')
+    except ValueError as error:
+        print('error reading GRUB config file')
+        return
+
     lines[iline] = 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash usbcore.usbfs_memory_mb={}"\n'.format(args.memory_limit)
 
     with open(args.default_grub,'w') as stream:
@@ -65,4 +74,4 @@ if args.increase_memory_limit:
     if answer in ['y','Y','yes','Yes']:
         subproces.call(['reboot','now'])
     else:
-        print('aborting Spinnaker installation ...')
+        print('please reboot computer at your convenience')

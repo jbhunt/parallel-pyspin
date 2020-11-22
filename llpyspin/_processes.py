@@ -57,6 +57,11 @@ class CameraBaseV2(mp.Process):
             self._started = mp.Value('i', 1)
 
         #
+        self._framerate = 1
+        self._exposure  = 3000
+        self._binsize   = 1 
+
+        #
         super().__init__()
         self.start()
         self.initialize()

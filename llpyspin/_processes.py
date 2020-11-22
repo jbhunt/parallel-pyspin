@@ -113,7 +113,7 @@ class CameraBaseV2(mp.Process):
                     result = f(camera, *args)
 
                 # function without args
-                elif type(item) == btyes:
+            elif type(item) == bytes:
                     f = dills.loads(item)
                     result = f(camera)
 

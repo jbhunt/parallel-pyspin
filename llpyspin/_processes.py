@@ -59,7 +59,7 @@ class CameraBaseV2(mp.Process):
         #
         self._framerate = 1
         self._exposure  = 3000
-        self._binsize   = 1 
+        self._binsize   = 1
 
         #
         super().__init__()
@@ -214,7 +214,7 @@ class CameraBaseV2(mp.Process):
 
         #
         if value != self._framerate:
-            logging.log(logging.ERROR, f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps')
+            logging.log(logging.ERROR, f'actual camera framerate of {value:.1f} fps does not equal the target framerate of {self._framerate} fps')
             return
 
         return value
@@ -229,7 +229,9 @@ class CameraBaseV2(mp.Process):
                 return False
             else:
                 try:
+                    camera.AcquisitionFrameRateEnable.SetValue(True)
                     camera.AcquisitionFrameRate.SetValue(value)
+                    camera.AcquisitionFrameRateEnable.SetValue(False)
                     return True
                 except PySpin.SpinnakerException:
                     return False

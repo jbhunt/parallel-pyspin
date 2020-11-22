@@ -109,12 +109,12 @@ class CameraBaseV2(mp.Process):
                 # function with args
                 if type(item) == list:
                     dilled, args = item
-                    f = dills.loads(dilled)
+                    f = dill.loads(dilled)
                     result = f(camera, *args)
 
                 # function without args
                 elif type(item) == bytes:
-                    f = dills.loads(item)
+                    f = dill.loads(item)
                     result = f(camera)
 
                 # return the result

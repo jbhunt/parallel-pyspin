@@ -56,6 +56,8 @@ class CameraBaseV2(mp.Process):
         else:
             self._started = mp.Value('i', 1)
 
+        super().__init__()
+
         return
 
     def run(self):

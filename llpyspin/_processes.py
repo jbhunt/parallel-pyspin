@@ -1,3 +1,4 @@
+import dill
 import types
 import queue
 import logging
@@ -30,6 +31,12 @@ class PropertyError(Exception):
         super().__init__()
         self.message = f'{value} is not a valid value for {property}'
         return
+
+# decorator for dilling nested functions
+def dilled(f):
+    def wrapped():
+        return dill.dumps(f)
+    return wrapped
 
 class CameraBaseV2(mp.Process):
     """
@@ -102,12 +109,13 @@ class CameraBaseV2(mp.Process):
 
                 #
                 if len(item) == 1:
-                    f = item
+                    f = dill.loads(item)
                     result = f(camera)
 
                 #
                 else:
-                    f, args = item
+                    dilled, args = item
+                    f = dill.loads(dilled)
                     result = f(camera, *args)
 
                 # return the result
@@ -131,7 +139,7 @@ class CameraBaseV2(mp.Process):
         """
         """
 
-        # define the nested function
+        @dilled
         def f(camera):
             try:
                 camera.Init()
@@ -144,7 +152,7 @@ class CameraBaseV2(mp.Process):
                 return False
 
         # send the function through the queue
-        self._iq.put(f)
+        self._iq.put()
 
         # retrieve the result of the function call
         result = self._oq.get()
@@ -159,6 +167,7 @@ class CameraBaseV2(mp.Process):
         """
         """
 
+        @dilled
         def f(camera):
             try:
                 if camera.IsStreaming():
@@ -194,6 +203,7 @@ class CameraBaseV2(mp.Process):
     @property
     def framerate(self):
 
+        @dilled
         def f(camera):
             value = camera.AcquisitionFrameRate.GetValue()
             return value
@@ -211,6 +221,7 @@ class CameraBaseV2(mp.Process):
     @framerate.setter
     def framerate(self, value):
 
+        @dilled
         def f(camera, value):
             min = camera.AcquisitionFrameRate.GetMin()
             max = camera.AcquisitionFrameRate.GetMax()

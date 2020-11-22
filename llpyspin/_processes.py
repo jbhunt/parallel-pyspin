@@ -56,7 +56,10 @@ class CameraBaseV2(mp.Process):
         else:
             self._started = mp.Value('i', 1)
 
+        #
         super().__init__()
+        self.start()
+        self.initialize()
 
         return
 
@@ -74,17 +77,17 @@ class CameraBaseV2(mp.Process):
             assert len(cameras) != 0
 
             # instantiate the camera
-            if type(self.device) == str:
-                self._camera = cameras.GetBySerial(device)
+            if type(self._device) == str:
+                camera = cameras.GetBySerial(device)
 
-            if type(self.device) == int:
-                self._camera = cameras.GetByIndex(device)
+            if type(self._device) == int:
+                camera = cameras.GetByIndex(device)
 
         except:
 
             # clean-up
             try:
-                del self._camera
+                del camera
             except NameError:
                 pass
             cameras.Clear()

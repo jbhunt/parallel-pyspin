@@ -28,6 +28,213 @@ class PropertyError(Exception):
         self.message = f'{value} is not a valid value for {property}'
         return
 
+class CameraBaseV2(mp.Process):
+    """
+    """
+
+    def __init__(self, device=0, **kwargs):
+        """
+        """
+
+        self._device = device
+
+        # queues
+        if 'iq' in kwargs.keys():
+            self._iq = kwargs['iq']
+        else:
+            self._iq = mp.Queue()
+        if 'oq' in kwargs.keys():
+            self._oq = kwargs['oq']
+        else:
+            self._oq = mp.Queue()
+        if 'started' in kwargs.keys():
+            self._started = kwargs['started']
+        else:
+            self._started = mp.Value('i', 1)
+
+        return
+
+    def run(self):
+        """
+        """
+
+        try:
+
+            # create instances of the system and cameras list
+            system  = PySpin.System.GetInstance()
+            cameras = system.GetCameras()
+
+            #
+            assert len(cameras) != 0
+
+            # instantiate the camera
+            if type(self.device) == str:
+                self._camera = cameras.GetBySerial(device)
+
+            if type(self.device) == int:
+                self._camera = cameras.GetByIndex(device)
+
+        except:
+
+            # clean-up
+            try:
+                del self._camera
+            except NameError:
+                pass
+            cameras.Clear()
+            del cameras
+            system.ReleaseInstance()
+
+            logging.log(f'failed to acquire camera[{self._device}]', level='error')
+
+            return
+
+        # main loop
+        while self.started:
+
+            try:
+
+                # retrieve an item from the queue
+                item = self._iq.get(block=False)
+
+                #
+                if len(item) == 1:
+                    f = item
+                    result = f(camera)
+
+                #
+                else:
+                    f, args = item
+                    result = f(camera, *args)
+
+                # return the result
+                self._oq.put(result)
+
+            except queue.Empty:
+                continue
+
+        # clean up
+        try:
+            del camera
+        except NameError:
+            pass
+        cameras.Clear()
+        del cameras
+        system.ReleaseInstance()
+
+        return
+
+    def initialize(self):
+        """
+        """
+
+        # define the nested function
+        def f(camera):
+            try:
+                camera.Init()
+                camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
+                camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
+                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestFirst)
+                camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+                return True
+            except PySpin.SpinnakerException:
+                return False
+
+        # send the function through the queue
+        self._iq.put(f)
+
+        # retrieve the result of the function call
+        result = self._oq.get()
+        if result:
+            logging.log(f'camera[{self._device}] initialized', level='info')
+        else:
+            logging.log(f'failed to initialize camera[{self._device}]', level='error')
+
+        return
+
+    def release(self):
+        """
+        """
+
+        def f(camera):
+            try:
+                if camera.IsStreaming():
+                    camera.EndAcquisition()
+                camera.DeInit()
+            except PySpin.SpinnakerException:
+                return False
+
+        # send the function through the queue
+        self._iq.put(f)
+
+        # retrieve the result of the function call
+        result = self._oq.get()
+        if result:
+            logging.log(f'camera[{self._device}] released', level='info')
+        else:
+            logging.log(f'failed to release camera[{self._device}]', level='error')
+
+        return
+
+    # started flag which maintains the main loop
+    @property
+    def started(self):
+        return True is self._started.value == 1 else False
+
+    @started.setter
+    def started(self, flag):
+        if flag not in [0, 1, True, False]:
+            raise ValueError('started flag can only be set to 0, 1, True, or False')
+        self._started.value = 1 if flag == True else 0
+
+    # framerate
+    @property
+    def framerate(self):
+
+        def f(camera):
+            value = camera.AcquisitionFrameRate.GetValue()
+            return value
+
+        self._iq.put(f)
+        value = self._oq.get()
+
+        #
+        if value != self._framerate:
+            logging.log(f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps', level='error')
+            return
+
+        return value
+
+    @framerate.setter
+    def framerate(self, value):
+
+        def f(camera, value):
+            min = camera.AcquisitionFrameRate.GetMin()
+            max = camera.AcquisitionFrameRate.GetMax()
+            if not min <= value <= max:
+                return False
+            else:
+                try:
+                    camera.AcquisitionFrameRate.SetValue(value)
+                    return True
+                except PySpin.SpinnakerException:
+                    return False
+
+        #
+        args = [value]
+        item = (f, args)
+        self._iq.put(item)
+
+        #
+        result = self._oq.get()
+        if result:
+            self._framerate = value
+            logging.log(f'camera[{self._device}] framerate set to {value}', level='info')
+        else:
+            logging.log(f'failed to set camera[{self._device}] framerate to {value}')
+
+        return
+
 class CameraBase():
     """
     this is the base class for any subclass of camera which handles the creation,
@@ -115,7 +322,7 @@ class CameraBase():
 
             # send the result back
             self._oq.put(False)
-            
+
             return
 
         # set the started flag to True

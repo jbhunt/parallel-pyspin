@@ -106,16 +106,16 @@ class CameraBaseV2(mp.Process):
                 # retrieve an item from the queue
                 item = self._iq.get(block=False)
 
-                #
-                if len(item) == 1:
-                    f = dill.loads(item)
-                    result = f(camera)
-
-                #
-                else:
+                # function with args
+                if type(item) == list:
                     dilled, args = item
-                    f = dill.loads(dilled)
+                    f = dills.loads(dilled)
                     result = f(camera, *args)
+
+                # function without args
+                elif type(item) == btyes:
+                    f = dills.loads(item)
+                    result = f(camera)
 
                 # return the result
                 self._oq.put(result)

@@ -47,7 +47,7 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
             logging.error('camera initialization failed')
             return
 
-        self.framerate = 30
+        self.framerate = 60
         self.exposure  = 1500
         self.binsize   = None
 
@@ -71,15 +71,17 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         # begin acquisition
         camera.BeginAcquisition()
 
+        txtfile = open('/home/polegpolskylab/Desktop/cam2.txt', 'w')
+
         # main loop
         while self.acquiring == True:
 
-            # There's a 3 second timeout for the call to GetNextImage to prevent
+            # There's a 1 ms timeout for the call to GetNextImage to prevent
             # the secondary camera from blocking when video acquisition is
             # aborted before the primary camera is triggered (see below).
 
             try:
-                image = camera.GetNextImage(3000) # timeout
+                image = camera.GetNextImage(1) # timeout
             except PySpin.SpinnakerException:
                 continue
 
@@ -88,12 +90,20 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
 
                 # convert the image
                 frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+                txtfile.write(str(frame.GetTimeStamp()) + '\n')
 
                 #
                 writer.write(frame)
 
             # release the image
             image.Release()
+
+        #
+        while True:
+            try:
+                image = camera.GetNextImage(1000) # timeout
+            except PySpin.SpinnakerException:
+                break
 
         writer.close()
 
@@ -122,9 +132,9 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # check that the camera isn't acquiring
-        if self.primed == True:
-            logging.info('camera is already primed')
-            return
+        # if self.primed == True:
+        #     logging.info('camera is already primed')
+        #     return
 
         if not filename.endswith('.avi'):
             raise ValueError('filename string must end with ".avi" extension')
@@ -133,7 +143,7 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         self.filename = filename
 
         # set the acquiring flag to 1
-        self.acquiring = True
+        # self.acquiring = True
 
         # send the acquisition command
         self._iq.put('start')
@@ -153,12 +163,12 @@ class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         """
 
         # check that the camera is acquiring
-        if self.acquiring == False:
-            logging.info('video acquisition is already stopped')
-            return
+        # if self.acquiring == False:
+        #     logging.info('video acquisition is already stopped')
+        #     return
 
         # break out of the acquisition loop
-        self.acquiring = False
+        # self.acquiring = False
 
         # retreive the result (sent after exiting the acquisition loop)
         if self._result == False:

@@ -4,6 +4,9 @@ import logging
 import numpy as np
 import multiprocessing as mp
 
+# shared flags
+_ACQUIRING = mp.Value('i', 0)
+
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
@@ -44,12 +47,16 @@ class CameraBase():
 
         self.device = device
 
+        # global variables
+        global _ACQUIRING
+
         # private attributes
 
         self._child           = None            # attribute which holds the reference to the child process
 
         self._started         = mp.Value('i',0) # this flag controls the main loop in the run method
-        self._acquiring       = mp.Value('i',0) # this flag controls the acquisition loop in the _start method
+        # self._acquiring       = mp.Value('i',0) # this flag controls the acquisition loop in the _start method
+        self._acquiring       = _ACQUIRING
 
         self._lock            = mp.Lock()       # acquisition lock
         self._locked          = False           # acquisition lock state
@@ -115,7 +122,7 @@ class CameraBase():
 
             # send the result back
             self._oq.put(False)
-            
+
             return
 
         # set the started flag to True

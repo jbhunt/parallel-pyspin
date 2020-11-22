@@ -198,6 +198,6 @@ class SpinnakerMixin(object):
         camera.DeInit()
 
         # reset the camera
-        camera.FactoryReset.Execute()
+        # camera.FactoryReset.Execute()
 
         return

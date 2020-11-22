@@ -78,10 +78,10 @@ class CameraBaseV2(mp.Process):
 
             # instantiate the camera
             if type(self._device) == str:
-                camera = cameras.GetBySerial(device)
+                camera = cameras.GetBySerial(self._device)
 
             if type(self._device) == int:
-                camera = cameras.GetByIndex(device)
+                camera = cameras.GetByIndex(self._device)
 
         except:
 
@@ -94,7 +94,7 @@ class CameraBaseV2(mp.Process):
             del cameras
             system.ReleaseInstance()
 
-            logging.log(f'failed to acquire camera[{self._device}]', level='error')
+            logging.log(logging.ERROR, f'failed to acquire camera[{self._device}]')
 
             return
 
@@ -155,9 +155,9 @@ class CameraBaseV2(mp.Process):
         # retrieve the result of the function call
         result = self._oq.get()
         if result:
-            logging.log(f'camera[{self._device}] initialized', level='info')
+            logging.log(logging.INFO, f'camera[{self._device}] initialized')
         else:
-            logging.log(f'failed to initialize camera[{self._device}]', level='error')
+            logging.log(loggin.ERROR, f'failed to initialize camera[{self._device}]')
 
         return
 
@@ -179,9 +179,9 @@ class CameraBaseV2(mp.Process):
         # retrieve the result of the function call
         result = self._oq.get()
         if result:
-            logging.log(f'camera[{self._device}] released', level='info')
+            logging.log(logging.INFO, f'camera[{self._device}] released')
         else:
-            logging.log(f'failed to release camera[{self._device}]', level='error')
+            logging.log(logging.ERROR, f'failed to release camera[{self._device}]')
 
         return
 
@@ -209,7 +209,7 @@ class CameraBaseV2(mp.Process):
 
         #
         if value != self._framerate:
-            logging.log(f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps', level='error')
+            logging.log(logging.ERROR, f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps')
             return
 
         return value
@@ -238,9 +238,9 @@ class CameraBaseV2(mp.Process):
         result = self._oq.get()
         if result:
             self._framerate = value
-            logging.log(f'camera[{self._device}] framerate set to {value}', level='info')
+            logging.log(logging.INFO, f'camera[{self._device}] framerate set to {value}')
         else:
-            logging.log(f'failed to set camera[{self._device}] framerate to {value}')
+            logging.log(logging.ERROR, f'failed to set camera[{self._device}] framerate to {value}')
 
         return
 

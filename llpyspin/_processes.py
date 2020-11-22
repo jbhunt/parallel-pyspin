@@ -32,12 +32,6 @@ class PropertyError(Exception):
         self.message = f'{value} is not a valid value for {property}'
         return
 
-# decorator for dilling nested functions
-def dilled(f):
-    def wrapped():
-        return dill.dumps(f)
-    return wrapped
-
 class CameraBaseV2(mp.Process):
     """
     """
@@ -139,7 +133,6 @@ class CameraBaseV2(mp.Process):
         """
         """
 
-        @dilled
         def f(camera):
             try:
                 camera.Init()
@@ -152,7 +145,7 @@ class CameraBaseV2(mp.Process):
                 return False
 
         # send the function through the queue
-        self._iq.put(f)
+        self._iq.put(dill.dumps(f))
 
         # retrieve the result of the function call
         result = self._oq.get()
@@ -167,7 +160,6 @@ class CameraBaseV2(mp.Process):
         """
         """
 
-        @dilled
         def f(camera):
             try:
                 if camera.IsStreaming():
@@ -177,7 +169,7 @@ class CameraBaseV2(mp.Process):
                 return False
 
         # send the function through the queue
-        self._iq.put(f)
+        self._iq.put(dill.dumps(f))
 
         # retrieve the result of the function call
         result = self._oq.get()
@@ -203,12 +195,11 @@ class CameraBaseV2(mp.Process):
     @property
     def framerate(self):
 
-        @dilled
         def f(camera):
             value = camera.AcquisitionFrameRate.GetValue()
             return value
 
-        self._iq.put(f)
+        self._iq.put(dill.dumps(f))
         value = self._oq.get()
 
         #
@@ -221,7 +212,6 @@ class CameraBaseV2(mp.Process):
     @framerate.setter
     def framerate(self, value):
 
-        @dilled
         def f(camera, value):
             min = camera.AcquisitionFrameRate.GetMin()
             max = camera.AcquisitionFrameRate.GetMax()
@@ -236,7 +226,7 @@ class CameraBaseV2(mp.Process):
 
         #
         args = [value]
-        item = (f, args)
+        item = (dill.dumps(f), args)
         self._iq.put(item)
 
         #

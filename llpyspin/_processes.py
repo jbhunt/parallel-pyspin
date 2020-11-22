@@ -145,12 +145,28 @@ class CameraBaseV2(mp.Process):
 
         def f(camera):
             try:
+
+                #
                 camera.Init()
+
+                #
                 camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
                 camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
                 camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestFirst)
+
+                # set the exposure
                 camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+                camera.AcquisitionFrameRateEnable.SetValue(False)
+                camera.ExposureTime.SetValue(self._exposure)
+
+                # set the framerate
+                camera.AcquisitionFrameRateEnable.SetValue(True)
+                camera.AcquisitionFrameRate.SetValue(self._framerate)
+
+                # binsize
+
                 return True
+                
             except PySpin.SpinnakerException:
                 return False
 
@@ -229,9 +245,7 @@ class CameraBaseV2(mp.Process):
                 return False
             else:
                 try:
-                    camera.AcquisitionFrameRateEnable.SetValue(True)
                     camera.AcquisitionFrameRate.SetValue(value)
-                    camera.AcquisitionFrameRateEnable.SetValue(False)
                     return True
                 except PySpin.SpinnakerException:
                     return False

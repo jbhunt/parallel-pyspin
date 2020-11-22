@@ -239,6 +239,7 @@ class CameraBaseV2(mp.Process):
     def framerate(self, value):
 
         def f(camera, value):
+            camera.AcquisitionFrameRateEnable.SetValue(True)
             min = camera.AcquisitionFrameRate.GetMin()
             max = camera.AcquisitionFrameRate.GetMax()
             if not min <= value <= max:

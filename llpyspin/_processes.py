@@ -157,16 +157,16 @@ class CameraBaseV2(mp.Process):
                 # set the exposure
                 camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
                 camera.AcquisitionFrameRateEnable.SetValue(False)
-                camera.ExposureTime.SetValue(self._exposure)
+                camera.ExposureTime.SetValue(3000)
 
                 # set the framerate
                 camera.AcquisitionFrameRateEnable.SetValue(True)
-                camera.AcquisitionFrameRate.SetValue(self._framerate)
+                camera.AcquisitionFrameRate.SetValue(1)
 
                 # binsize
 
                 return True
-                
+
             except PySpin.SpinnakerException:
                 return False
 

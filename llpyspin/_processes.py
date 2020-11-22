@@ -152,7 +152,7 @@ class CameraBaseV2(mp.Process):
                 return False
 
         # send the function through the queue
-        self._iq.put()
+        self._iq.put(f)
 
         # retrieve the result of the function call
         result = self._oq.get()

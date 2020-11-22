@@ -48,8 +48,8 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
             logging.error(f'camera initialization failed')
             return
 
-        self.framerate = None
-        self.exposure  = None
+        self.framerate = 60
+        self.exposure  = 1500
         self.binsize   = None
 
         return
@@ -113,22 +113,38 @@ class PrimaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
         # unset the trigger mode
         camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
+        txtfile = open('/home/polegpolskylab/Desktop/cam1.txt', 'w')
+
         # main loop
         while self.acquiring:
 
-            image = camera.GetNextImage()
+            try:
+                image = camera.GetNextImage(1)
+            except PySpin.SpinnakerException:
+                continue
 
             #
             if not image.IsIncomplete():
 
                 # convert the image
                 frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+                txtfile.write(str(frame.GetTimeStamp()) + '\n')
 
                 # save the result
                 writer.write(image)
 
             # release the image
             image.Release()
+
+        # stop acquisition by resetting the trigger mode
+        camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+
+        # empty out the transfer queue buffer
+        while True:
+            try:
+                image = camera.GetNextImage(1000)
+            except PySpin.SpinnakerException:
+                break
 
         #
         writer.close()

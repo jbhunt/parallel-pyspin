@@ -182,7 +182,7 @@ class CameraBaseV2(mp.Process):
     # started flag which maintains the main loop
     @property
     def started(self):
-        return True is self._started.value == 1 else False
+        return True if self._started.value == 1 else False
 
     @started.setter
     def started(self, flag):

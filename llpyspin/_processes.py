@@ -122,6 +122,10 @@ class CameraBaseV2(mp.Process):
                     f = dill.loads(item)
                     result = f(camera)
 
+                #
+                else:
+                    pass
+
                 # return the result
                 self._oq.put(result)
 
@@ -248,7 +252,7 @@ class CameraBaseV2(mp.Process):
             else:
                 try:
                     camera.AcquisitionFrameRate.SetValue(value)
-                    if camera.AcquisitionFrameRate.GetValue() != value:
+                    if camera.AcquisitionFrameRate.GetValue() != int(np.around(value)):
                         return False
                     else:
                         return True

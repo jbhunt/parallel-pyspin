@@ -91,6 +91,7 @@ class CameraBase(mp.Process):
             cameras.Clear()
             del cameras
             system.ReleaseInstance()
+            del system
 
             logging.log(logging.ERROR, f'failed to acquire camera[{self._device}]')
 
@@ -136,6 +137,7 @@ class CameraBase(mp.Process):
         cameras.Clear()
         del cameras
         system.ReleaseInstance()
+        del system
 
         return
 
@@ -219,9 +221,10 @@ class CameraBase(mp.Process):
 
         def f(camera):
             try:
-                # if camera.IsStreaming():
-                #     camera.EndAcquisition()
+                if camera.IsStreaming():
+                    camera.EndAcquisition()
                 camera.DeInit()
+                return True
             except PySpin.SpinnakerException:
                 return False
 

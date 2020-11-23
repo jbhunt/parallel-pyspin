@@ -249,17 +249,14 @@ class CameraBaseV2(mp.Process):
             max = camera.AcquisitionFrameRate.GetMax()
             if not min <= value <= max:
                 return False
-                print('outside of range')
             else:
                 try:
                     camera.AcquisitionFrameRate.SetValue(value)
-                    if camera.AcquisitionFrameRate.GetValue() != int(np.around(value)):
-                        print('incongruent values')
+                    if int(np.around(camera.AcquisitionFrameRate.GetValue())) != value:
                         return False
                     else:
                         return True
                 except PySpin.SpinnakerException:
-                    print('error with code itself')
                     return False
 
         #

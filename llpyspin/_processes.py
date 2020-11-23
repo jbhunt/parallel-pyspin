@@ -40,8 +40,6 @@ class CameraBaseV2(mp.Process):
         """
         """
 
-        super().__init__()
-
         # device ID
         self._device = device
 
@@ -161,6 +159,9 @@ class CameraBaseV2(mp.Process):
     def initialize(self):
         """
         """
+
+        #
+        super().__init__()
 
         # set the started flag to True
         self.started = True
@@ -374,6 +375,7 @@ class CameraBaseV2(mp.Process):
         return value
 
     # roi
+    @property
     def roi(self):
 
         def f(camera):

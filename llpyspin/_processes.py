@@ -339,7 +339,7 @@ class CameraBaseV2(mp.Process):
 
     # exposure
     @property
-    def exopsure(self):
+    def exposure(self):
 
         def f(camera):
             return camera.ExposureTime.GetValue()
@@ -364,7 +364,7 @@ class CameraBaseV2(mp.Process):
             return (x, y)
 
         self._iq.put(dill.dumps(f))
-        value = int(np.around(self._oq.get()))
+        value = self._oq.get()
 
         #
         if value != self._binsize:

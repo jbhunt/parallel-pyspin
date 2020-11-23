@@ -388,7 +388,7 @@ class CameraBaseV2(mp.Process):
 
         #
         if value != self._roi:
-            logging.log(logging.ERROR, f'actual camera roi parameters ({value}) do not equal the target parameters of {self._roi})
+            logging.log(logging.ERROR, f'actual camera roi parameters ({value}) do not equal the target parameters of {self._roi}')
             return
 
         return value

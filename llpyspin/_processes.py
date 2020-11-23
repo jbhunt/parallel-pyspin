@@ -6,7 +6,7 @@ import numpy as np
 import multiprocessing as mp
 
 # shared flags
-_ACQUIRING = mp.Value('i', 0)
+ACQUIRING = mp.Value('i', 0)
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -40,30 +40,42 @@ class CameraBaseV2(mp.Process):
         """
         """
 
+        super().__init__()
+
+        # device ID
         self._device = device
 
-        # queues
+        # input queue
         if 'iq' in kwargs.keys():
             self._iq = kwargs['iq']
         else:
             self._iq = mp.Queue()
+
+        # output queue
         if 'oq' in kwargs.keys():
             self._oq = kwargs['oq']
         else:
             self._oq = mp.Queue()
+
+        # started flag
         if 'started' in kwargs.keys():
             self._started = kwargs['started']
         else:
-            self._started = mp.Value('i', 1)
+            self._started = mp.Value('i', 0)
 
-        #
-        self._framerate = 1
-        self._exposure  = 3000
-        self._binsize   = 1
+        # acquiring flag
+        if 'aqcuiring' in kwargs.keys():
+            self._acquiring = kwargs['acquiring']
+        else:
+            self._acquiring = ACQUIRING
 
-        #
-        super().__init__()
-        self.start()
+        # parameters (determined during initialization)
+        self._framerate = None
+        self._exposure  = None
+        self._binsize   = None
+        self._roi       = None
+
+        # initialize the camera
         self.initialize()
 
         return
@@ -100,6 +112,9 @@ class CameraBaseV2(mp.Process):
             system.ReleaseInstance()
 
             logging.log(logging.ERROR, f'failed to acquire camera[{self._device}]')
+
+            # reset the started flag
+            self.started = False
 
             return
 
@@ -147,6 +162,12 @@ class CameraBaseV2(mp.Process):
         """
         """
 
+        # set the started flag to True
+        self.started = True
+
+        if not self.is_alive():
+            self.start()
+
         def f(camera):
             try:
 
@@ -167,20 +188,42 @@ class CameraBaseV2(mp.Process):
                 camera.AcquisitionFrameRateEnable.SetValue(True)
                 camera.AcquisitionFrameRate.SetValue(1)
 
-                # binsize
+                #
+                x = camera.OffsetX.GetValue()
+                y = camera.OffsetY.GetValue()
+                w = camera.Width.GetValue()
+                h = camera.Height.GetValue()
 
-                return True
+                #
+                roi = (x, y, w, h)
+                framerate = int(np.around(camera.AcquisitionFrameRate.GetValue()))
+                exposure  = int(np.around(camera.ExposureTime.GetValue()))
+                binsize   = (camera.BinningHorizontal.GetValue(), camera.BinningVertical.GetValue())
+
+                #
+                parameters = {
+                    'framerate' : framerate,
+                    'exposure'  : exposure,
+                    'binsize'   : binsize,
+                    'roi'       : roi,
+                }
+
+                return True, parameters
 
             except PySpin.SpinnakerException:
-                return False
+                return False, None
 
         # send the function through the queue
         self._iq.put(dill.dumps(f))
 
         # retrieve the result of the function call
-        result = self._oq.get()
+        result, parameters = self._oq.get()
         if result:
             logging.log(logging.INFO, f'camera[{self._device}] initialized')
+            self._framerate = parameters['framerate']
+            self._exposure  = parameters['exposure']
+            self._binsize   = parameters['binsize']
+            self._roi       = parameters['roi']
         else:
             logging.log(loggin.ERROR, f'failed to initialize camera[{self._device}]')
 
@@ -208,6 +251,27 @@ class CameraBaseV2(mp.Process):
         else:
             logging.log(logging.ERROR, f'failed to release camera[{self._device}]')
 
+        # clean up
+        self.join()
+
+        return
+
+    def join(self):
+        """
+        override the join method and add some additional functionality
+        """
+
+        # break out of the main loop
+        self.started = False
+
+        # join the thread
+        super().join(timeout=5)
+
+        # check if it has deadlocked
+        if self.is_alive():
+            logging.log(logging.ERROR, 'child process deadlocked')
+            self.terminate()
+
         return
 
     # started flag which maintains the main loop
@@ -226,9 +290,7 @@ class CameraBaseV2(mp.Process):
     def framerate(self):
 
         def f(camera):
-            camera.AcquisitionFrameRateEnable.SetValue(True)
-            value = camera.AcquisitionFrameRate.GetValue()
-            return value
+            return camera.AcquisitionFrameRate.GetValue()
 
         self._iq.put(dill.dumps(f))
         value = int(np.around(self._oq.get()))
@@ -244,7 +306,8 @@ class CameraBaseV2(mp.Process):
     def framerate(self, value):
 
         def f(camera, value):
-            camera.AcquisitionFrameRateEnable.SetValue(True)
+            if not camera.AcquisitionFrameRateEnable.GetValue():
+                camera.AcquisitionFrameRateEnable.SetValue(True)
             min = camera.AcquisitionFrameRate.GetMin()
             max = camera.AcquisitionFrameRate.GetMax()
             if not min <= value <= max:
@@ -273,6 +336,62 @@ class CameraBaseV2(mp.Process):
             logging.log(logging.ERROR, f'failed to set camera[{self._device}] framerate to {value}')
 
         return
+
+    # exposure
+    @property
+    def exopsure(self):
+
+        def f(camera):
+            return camera.ExposureTime.GetValue()
+
+        self._iq.put(dill.dumps(f))
+        value = int(np.around(self._oq.get()))
+
+        #
+        if value != self._exposure:
+            logging.log(logging.ERROR, f'actual camera exposure of {value} us does not equal the target exposure of {self._exposure} us')
+            return
+
+        return value
+
+    # binsize
+    @property
+    def binsize(self):
+
+        def f(camera):
+            x = camera.BinningHorizontal.GetValue()
+            y = camera.BinningVertical.GetValue()
+            return (x, y)
+
+        self._iq.put(dill.dumps(f))
+        value = int(np.around(self._oq.get()))
+
+        #
+        if value != self._binsize:
+            logging.log(logging.ERROR, f'actual camera binsize of {value} pixels does not equal the target binsize of {self._binsize} pixels')
+            return
+
+        return value
+
+    # roi
+    def roi(self):
+
+        def f(camera):
+            x = camera.OffsetX.GetValue()
+            y = camera.OffsetY.GetValue()
+            w = camera.Width.GetValue()
+            h = camera.Height.GetValue()
+            return (x, y, w, h)
+
+        self._iq.put(dill.dumps(f))
+        value = self._oq.get()
+
+        #
+        if value != self._roi:
+            logging.log(logging.ERROR, f'actual camera roi parameters ({value}) do not equal the target parameters of {self._roi})
+            return
+
+        return value
 
 class CameraBase():
     """

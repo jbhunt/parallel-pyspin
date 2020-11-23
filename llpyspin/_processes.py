@@ -261,17 +261,6 @@ class CameraBase(mp.Process):
 
         return
 
-    # started flag which maintains the main loop
-    @property
-    def started(self):
-        return True if self._started.value == 1 else False
-
-    @started.setter
-    def started(self, flag):
-        if flag not in [0, 1, True, False]:
-            raise ValueError('started flag can only be set to 0, 1, True, or False')
-        self._started.value = 1 if flag == True else 0
-
     # framerate
     @property
     def framerate(self):
@@ -393,7 +382,18 @@ class CameraBase(mp.Process):
         x, y, w, h = self.roi
         return h
 
-    # acquiring flag
+    # started flag which maintains the main loop
+    @property
+    def started(self):
+        return True if self._started.value == 1 else False
+
+    @started.setter
+    def started(self, flag):
+        if flag not in [0, 1, True, False]:
+            raise ValueError('started flag can only be set to 0, 1, True, or False')
+        self._started.value = 1 if flag == True else 0
+
+    # acquiring flag which maintains the acquisition loop
     @property
     def acquiring(self): return True if self._acquiring.value == 1 else False
 
@@ -404,34 +404,32 @@ class CameraBase(mp.Process):
     # acquisition lock state
     @property
     def locked(self):
-        return True if self._lock.locked else False
+        return True if self._lock.locked() else False
 
     @locked.setter
     def locked(self, value):
 
         # engage the lock
         if value == True:
-            if self._locked:
-                logging.debug('acquisition lock is already engaged')
+            if self.locked:
+                logging.log(logging.INFO, 'acquisition lock is already engaged')
                 return
             result = self._lock.acquire(block=False)
             if result:
-                logging.debug('acquisition lock engaged')
-                self._locked = True
+                logging.log(logging.INFO, 'acquisition lock engaged')
             else:
-                logging.debug('failed to engage acquisition lock')
+                logging.log(logging.WARNING, 'failed to engage acquisition lock')
 
         # disengage the lock
         elif value == False:
-            if not self._locked:
-                logging.debug('acquisition lock is not engaged')
+            if not self.locked:
+                logging.log(logging.INFO, 'acquisition lock is not engaged')
                 return
             try:
                 self._lock.release()
-                logging.debug('acquisition lock disengaged')
-                self._locked = False
+                logging.log(logging.INFO, 'acquisition lock disengaged')
             except ValueError:
-                logging.debug('failed to disengage acquisition lock')
+                logging.log(logging.WARNING, 'failed to disengage acquisition lock')
 
         else:
             raise ValueError('invalid acquisition lock state')

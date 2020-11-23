@@ -152,7 +152,7 @@ class CameraBaseV2(mp.Process):
                 #
                 camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
                 camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
-                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestFirst)
+                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestOnly)
 
                 # set the exposure
                 camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
@@ -226,7 +226,7 @@ class CameraBaseV2(mp.Process):
             return value
 
         self._iq.put(dill.dumps(f))
-        value = self._oq.get()
+        value = int(np.around(self._oq.get()))
 
         #
         if value != self._framerate:
@@ -247,7 +247,10 @@ class CameraBaseV2(mp.Process):
             else:
                 try:
                     camera.AcquisitionFrameRate.SetValue(value)
-                    return True
+                    if camera.AcquisitionFrameRate.GetValue() != value:
+                        return False
+                    else:
+                        return True
                 except PySpin.SpinnakerException:
                     return False
 

@@ -112,7 +112,7 @@ class CameraBaseV2(mp.Process):
                 item = self._iq.get(block=False)
 
                 # function with args
-                if type(item) == list:
+                if type(item) == list or type(item) == tuple:
                     dilled, args = item
                     f = dill.loads(dilled)
                     result = f(camera, *args)
@@ -222,6 +222,7 @@ class CameraBaseV2(mp.Process):
     def framerate(self):
 
         def f(camera):
+            camera.AcquisitionFrameRateEnable.SetValue(True)
             value = camera.AcquisitionFrameRate.GetValue()
             return value
 
@@ -230,7 +231,7 @@ class CameraBaseV2(mp.Process):
 
         #
         if value != self._framerate:
-            logging.log(logging.ERROR, f'actual camera framerate of {value:.1f} fps does not equal the target framerate of {self._framerate} fps')
+            logging.log(logging.ERROR, f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps')
             return
 
         return value
@@ -256,7 +257,7 @@ class CameraBaseV2(mp.Process):
 
         #
         args = [value]
-        item = (dill.dumps(f), args)
+        item = [dill.dumps(f), args]
         self._iq.put(item)
 
         #

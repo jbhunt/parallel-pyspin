@@ -236,8 +236,8 @@ class CameraBaseV2(mp.Process):
 
         def f(camera):
             try:
-                if camera.IsStreaming():
-                    camera.EndAcquisition()
+                # if camera.IsStreaming():
+                #     camera.EndAcquisition()
                 camera.DeInit()
             except PySpin.SpinnakerException:
                 return False

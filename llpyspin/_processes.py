@@ -48,7 +48,13 @@ class CameraBase(mp.Process):
             self._acquiring = ACQUIRING
 
         #
-        self._lock = mp.Lock()
+        # self._container = mp.Array('i', [0])
+        self._manager = mp.Manager()
+        self._container = self._manager.list()
+        self._lock = self._manager.Lock()
+
+        #
+        # self._lock = mp.Lock()
 
         # parameters (determined during initialization)
         self._framerate = None
@@ -108,13 +114,23 @@ class CameraBase(mp.Process):
                 # retrieve an item from the queue
                 item = self._iq.get(block=False)
 
-                # function with args
+                # function with args, kwargs, or access to the namespace
                 if type(item) == list or type(item) == tuple:
-                    dilled, args = item
-                    f = dill.loads(dilled)
-                    result = f(camera, *args)
 
-                # function without args
+                    # unpickle the function
+                    dilled, args, kwargs = item
+                    f = dill.loads(dilled)
+
+                    #
+                    if type(kwargs) != dict:
+                        kwargs = {kwarg : self.__dict__[kwarg] for kwarg in kwargs}
+                        result = f(camera, *args, **kwargs)
+
+                    #
+                    else:
+                        result = f(camera, *args, **kwargs)
+
+                # function without args, kwargs, or access to the namespace
                 elif type(item) == bytes:
                     f = dill.loads(item)
                     result = f(camera)
@@ -211,13 +227,16 @@ class CameraBase(mp.Process):
             self._binsize   = parameters['binsize']
             self._roi       = parameters['roi']
         else:
-            logging.log(loggin.ERROR, f'failed to initialize camera[{self._device}]')
+            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
 
         return
 
     def release(self):
         """
         """
+
+        if not self.started:
+            return
 
         def f(camera):
             try:
@@ -300,7 +319,7 @@ class CameraBase(mp.Process):
 
         #
         args = [value]
-        item = [dill.dumps(f), args]
+        item = (dill.dumps(f), args, {})
         self._iq.put(item)
 
         #

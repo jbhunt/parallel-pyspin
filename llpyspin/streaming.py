@@ -1,3 +1,4 @@
+import dill
 import queue
 import logging
 import numpy as np
@@ -27,9 +28,6 @@ class VideoStream(CameraBase):
 
         super().__init__(device)
 
-        x, y, w, h = self.roi
-        self._container = mp.Array('i', w * h)
-
         return
 
     def open(self):
@@ -39,18 +37,24 @@ class VideoStream(CameraBase):
         # set the acquisition flag
         self.acquiring = True
 
-        def f(camera):
+        # freeze the image shape
+        self._width  = self.width
+        self._height = self.height
+
+        def f(camera, **kwargs):
+
+            acquiring = kwargs['_acquiring']
+            container = kwargs['_container']
+            manager   = kwargs['_manager']
+            lock      = kwargs['_lock']
 
             try:
                 camera.BeginAcquisition()
 
                 # main acquisition loop
-                while self.acquiring:
+                while acquiring.value:
 
-                    try:
-                        image = camera.GetNextImage(1)
-                    except PySpin.SpinnakerException:
-                        continue
+                    image = camera.GetNextImage()
 
                     #
                     if not image.IsIncomplete():
@@ -59,15 +63,15 @@ class VideoStream(CameraBase):
                         data = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray().flatten()
 
                         # store the image (critical - use lock)
-                        with self._container.get_lock():
-                            self._container[:] = image
+                        with lock:
+                            container[:] = data
+
             except:
                 return False
 
-            return True
-
         #
-        self._iq.put(dill.dumps(f))
+        item = (dill.dumps(f), [], {'_acquiring', '_container', '_manager', '_lock'})
+        self._iq.put(item)
 
         return
 
@@ -75,6 +79,9 @@ class VideoStream(CameraBase):
         """
         """
 
+        if not self.acquiring:
+            return
+            
         self.acquiring = False
 
         result = self._oq.get()
@@ -92,20 +99,7 @@ class VideoStream(CameraBase):
             return (False, None)
 
         # the lock blocks if a new image is being written to the image attribute
-        with self._container.get_lock():
-            image = np.array(self._container[:], dtype=np.uint8).reshape([self.height, self.width])
+        with self._lock:
+            image = np.array(self._container[:], dtype=np.uint8).reshape([self._height, self._width])
 
         return (True, image)
-
-    # extend the setter of the roi descriptor
-    @CameraBase.roi.setter
-    def roi(self, value):
-
-        # invoke the setter
-        CameraBase.roi.fset(self, value)
-
-        # recreate the container with the new roi
-        x, y, w, h = self.roi
-        self._container = mp.Array('i', w * h)
-
-        return

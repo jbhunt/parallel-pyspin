@@ -6,7 +6,7 @@ class VideoWriter(object):
     class for creating videos much like OpenCV's VideoWriter class
     """
 
-    def __init__(self, filename, codec, fps, shape, **kwargs):
+    def __init__(self, filename, codec='H264', fps=30, backend='ffmpeg'):
         """
         """
 
@@ -22,31 +22,32 @@ class VideoWriter(object):
         _params.update(kwargs)
 
         self.filename = filename
-        self.recorder = PySpin.SpinVideo()
 
-        if codec == None:
-            self.option = PySpin.AVIOption()
+        if backend == 'ffmpeg':
 
-        elif codec == 'MJPG':
-            self.option = PySpin.MJPGOption()
-            self.option.quality = _params['quality']
+            #
 
-        elif codec == 'H264':
-            self.option = PySpin.H264Option()
-            self.option.bitrate = _params['bitrate']
+            pass
 
-        #
-        self.option.frameRate = fps
+        elif backend == 'PySpin':
+            self.recorder = PySpin.SpinVideo()
+
+            if codec == None:
+                self.option = PySpin.AVIOption()
+
+            elif codec == 'MJPG':
+                self.option = PySpin.MJPGOption()
+                self.option.quality = _params['quality']
+
+            elif codec == 'H264':
+                self.option = PySpin.H264Option()
+                self.option.bitrate = _params['bitrate']
+
+            #
+            self.option.frameRate = fps
+            self.recorder.Open(self.filename, self.option)
 
         self.open()
-
-        return
-
-    def open(self):
-        """
-        """
-
-        self.recorder.Open(self.filename, self.option)
 
         return
 

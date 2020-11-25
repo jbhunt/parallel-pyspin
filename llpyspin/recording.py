@@ -1,12 +1,13 @@
 import os
 import PySpin
+import skvideo.io
 
 class VideoWriter(object):
     """
     class for creating videos much like OpenCV's VideoWriter class
     """
 
-    def __init__(self, filename, codec='H264', fps=30, backend='ffmpeg'):
+    def __init__(self, filename, codec='H264', fps=30, shape=None, backend='ffmpeg'):
         """
         """
 
@@ -24,10 +25,11 @@ class VideoWriter(object):
         self.filename = filename
 
         if backend == 'ffmpeg':
-
-            #
-
-            pass
+            idct = {}
+            odct = {'-r' : str(fps), '-c:v' : 'libx264'}
+            self.writer = skvideo.io.FFmpegWriter(self.filename, inputdict=idct, outputdict=odct)
+            self.write = self._ffmpeg_write
+            self.close = self._ffmpeg_close
 
         elif backend == 'PySpin':
             self.recorder = PySpin.SpinVideo()
@@ -47,11 +49,31 @@ class VideoWriter(object):
             self.option.frameRate = fps
             self.recorder.Open(self.filename, self.option)
 
+            #
+            self.write = self._pyspin_write
+            self.close = self._pyspin_close
+
         self.open()
 
         return
 
-    def write(self, frame):
+    def _ffmpeg_write(self, frame):
+        """
+        """
+
+        self.writer.writeFrame(frame)
+
+        return
+
+    def _ffmpeg_close(self):
+        """
+        """
+
+        self.writer.close()
+
+        return
+
+    def _pyspin_write(self, frame):
         """
         save a frame
         """
@@ -60,7 +82,7 @@ class VideoWriter(object):
 
         return
 
-    def close(self):
+    def _pyspin_close(self):
         """
         close the file
         """

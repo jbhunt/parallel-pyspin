@@ -1,24 +1,17 @@
 import dill
 import queue
+import PySpin
 import logging
 import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import CameraBase
-from ._spinnaker  import SpinnakerMixin
-from ._properties import PropertiesMixin
+from ._processes  import MainProcess
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
-# try to import the PySpin package
-try:
-    import PySpin
-except ModuleNotFoundError:
-    logging.error('PySpin import failed.')
-
-class VideoStream(CameraBase):
+class VideoStream(MainProcess):
     """
     """
 
@@ -28,25 +21,29 @@ class VideoStream(CameraBase):
 
         super().__init__(device)
 
+        self._initialize()
+
         return
 
     def open(self):
         """
         """
 
+        # initialize the camera if needed
+        if not self._child.started:
+            self._initialize()
+
         # set the acquisition flag
         self.acquiring = True
 
-        # freeze the image shape
-        self._width  = self.width
-        self._height = self.height
+        def f(camera, *args, **kwargs):
 
-        def f(camera, **kwargs):
+            # unpack the kwargs
+            shape     = kwargs['shape']
+            acquiring = kwargs['acquiring']
 
-            acquiring = kwargs['_acquiring']
-            container = kwargs['_container']
-            manager   = kwargs['_manager']
-            lock      = kwargs['_lock']
+            # size of the image (i.e., total number of pixels)
+            size = shape[0] * shape[1]
 
             try:
                 camera.BeginAcquisition()
@@ -54,7 +51,10 @@ class VideoStream(CameraBase):
                 # main acquisition loop
                 while acquiring.value:
 
-                    image = camera.GetNextImage()
+                    try:
+                        image = camera.GetNextImage(1)
+                    except PySpin.SpinnakerException:
+                        continue
 
                     #
                     if not image.IsIncomplete():
@@ -63,15 +63,21 @@ class VideoStream(CameraBase):
                         data = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray().flatten()
 
                         # store the image (critical - use lock)
-                        with lock:
-                            container[:] = data
+                        with buffer.get_lock():
+                            buffer[:size] = data
+
+                return True
 
             except:
                 return False
 
-        #
-        item = (dill.dumps(f), [], {'_acquiring', '_container', '_manager', '_lock'})
-        self._iq.put(item)
+        # pack the kwargs
+        kwargs = {
+            'shape'     : (self.height, self.width),
+            'acquiring' : self._acquiring
+        }
+        item = (dill.dumps(f), [], kwargs)
+        self._child.iq.put(item)
 
         return
 
@@ -81,12 +87,28 @@ class VideoStream(CameraBase):
 
         if not self.acquiring:
             return
-            
+
         self.acquiring = False
 
-        result = self._oq.get()
+        result = self._child.oq.get()
         if not result:
             logging.log(logging.ERROR, f'acquisition for camera[{self._device}] failed')
+
+        def f(camera, *args, **kwargs):
+            try:
+                camera.EndAcquisition()
+                return True
+            except:
+                return False
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'video deacquisition for camera[{self._device}] failed')
+
+        # release the camera
+        self._release()
 
         return
 
@@ -99,7 +121,9 @@ class VideoStream(CameraBase):
             return (False, None)
 
         # the lock blocks if a new image is being written to the image attribute
-        with self._lock:
-            image = np.array(self._container[:], dtype=np.uint8).reshape([self._height, self._width])
+        # with self._buffer_lock:
+        with self._child.buffer.get_lock():
+            data = self._child.buffer[:][:self.width * self.height]
+            image = np.array(data, dtype=np.uint8).reshape([self.height, self.width])
 
         return (True, image)

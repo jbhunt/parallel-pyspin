@@ -8,62 +8,52 @@ import multiprocessing as mp
 
 # shared flags
 ACQUIRING = mp.Value('i', 0)
+BUFFER    = mp.Array('i', 1080 * 1440)
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
-class CameraBase(mp.Process):
+class ChildProcess(mp.Process):
     """
     """
 
-    def __init__(self, device=0, **kwargs):
+    def __init__(self, device=0):
         """
         """
 
-        # device ID
-        self._device = device
+        super().__init__()
 
-        # input queue
-        if 'iq' in kwargs.keys():
-            self._iq = kwargs['iq']
-        else:
-            self._iq = mp.Queue()
+        self._device  = device
+        self._started = mp.Value('i', 0)
 
-        # output queue
-        if 'oq' in kwargs.keys():
-            self._oq = kwargs['oq']
-        else:
-            self._oq = mp.Queue()
+        # io queues
+        self.iq = mp.Queue()
+        self.oq = mp.Queue()
 
-        # started flag
-        if 'started' in kwargs.keys():
-            self._started = kwargs['started']
-        else:
-            self._started = mp.Value('i', 0)
+        # image buffer
+        self.buffer = mp.Array('i', 5000000)
 
-        # acquiring flag
-        if 'aqcuiring' in kwargs.keys():
-            self._acquiring = kwargs['acquiring']
-        else:
-            self._acquiring = ACQUIRING
+        return
 
-        #
-        # self._container = mp.Array('i', [0])
-        self._manager = mp.Manager()
-        self._container = self._manager.list()
-        self._lock = self._manager.Lock()
+    def start(self):
+        """
+        override the start method
+        """
 
-        #
-        # self._lock = mp.Lock()
+        self.started = True
 
-        # parameters (determined during initialization)
-        self._framerate = None
-        self._exposure  = None
-        self._binsize   = None
-        self._roi       = None
+        super().start()
 
-        # initialize the camera
-        self.initialize()
+        return
+
+    def join(self, timeout=0):
+        """
+        override the join method
+        """
+
+        self.started = False
+
+        super().join(timeout)
 
         return
 
@@ -99,8 +89,6 @@ class CameraBase(mp.Process):
             system.ReleaseInstance()
             del system
 
-            logging.log(logging.ERROR, f'failed to acquire camera[{self._device}]')
-
             # reset the started flag
             self.started = False
 
@@ -111,36 +99,20 @@ class CameraBase(mp.Process):
 
             try:
 
-                # retrieve an item from the queue
-                item = self._iq.get(block=False)
+                # input
+                item = self.iq.get(block=False)
 
-                # function with args, kwargs, or access to the namespace
-                if type(item) == list or type(item) == tuple:
+                # call the function
+                dilled, args, kwargs = item
 
-                    # unpickle the function
-                    dilled, args, kwargs = item
-                    f = dill.loads(dilled)
+                # NOTE - the image buffer is inserted into the kwargs
+                kwargs['buffer'] = self.buffer
 
-                    #
-                    if type(kwargs) != dict:
-                        kwargs = {kwarg : self.__dict__[kwarg] for kwarg in kwargs}
-                        result = f(camera, *args, **kwargs)
+                f = dill.loads(dilled)
+                result = f(camera, *args, **kwargs)
 
-                    #
-                    else:
-                        result = f(camera, *args, **kwargs)
-
-                # function without args, kwargs, or access to the namespace
-                elif type(item) == bytes:
-                    f = dill.loads(item)
-                    result = f(camera)
-
-                #
-                else:
-                    pass
-
-                # return the result
-                self._oq.put(result)
+                # output
+                self.oq.put(result)
 
             except queue.Empty:
                 continue
@@ -157,20 +129,50 @@ class CameraBase(mp.Process):
 
         return
 
-    def initialize(self):
+    @property
+    def started(self):
+        return True if self._started.value == 1 else False
+
+    @started.setter
+    def started(self, value):
+        self._started.value = value
+
+class MainProcess(object):
+    """
+    """
+
+    def __init__(self, device):
         """
         """
 
-        #
         super().__init__()
 
-        # set the started flag to True
-        self.started = True
+        #
+        self._device = device
 
-        if not self.is_alive():
-            self.start()
+        # instantiate a manager for sharing proxy objects betweeen processes
+        self._manager = mp.Manager()
 
-        def f(camera):
+        # parameters (determined during initialization)
+        self._framerate = None
+        self._exposure  = None
+        self._binsize   = None
+        self._roi       = None
+
+        #
+        self._acquiring = self._manager.Value('i', 0)
+
+        return
+
+    def _initialize(self):
+        """
+        """
+
+        # create and start the child process
+        self._child = ChildProcess(self._device)
+        self._child.start()
+
+        def f(camera, *args, **kwargs):
             try:
 
                 #
@@ -215,30 +217,34 @@ class CameraBase(mp.Process):
             except PySpin.SpinnakerException:
                 return False, None
 
-        # send the function through the queue
-        self._iq.put(dill.dumps(f))
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result, parameters = self._child.oq.get()
 
-        # retrieve the result of the function call
-        result, parameters = self._oq.get()
+        # set all property values
         if result:
             logging.log(logging.INFO, f'camera[{self._device}] initialized')
             self._framerate = parameters['framerate']
             self._exposure  = parameters['exposure']
             self._binsize   = parameters['binsize']
+            self._height    = parameters['roi'][3]
+            self._width     = parameters['roi'][2]
             self._roi       = parameters['roi']
+
         else:
             logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
 
         return
 
-    def release(self):
+    def _release(self):
         """
         """
 
-        if not self.started:
+        if not self._child.started:
+            logging.log(logging.DEBUG, 'no active child process')
             return
 
-        def f(camera):
+        def f(camera, *args, **kwargs):
             try:
                 if camera.IsStreaming():
                     camera.EndAcquisition()
@@ -248,35 +254,19 @@ class CameraBase(mp.Process):
                 return False
 
         # send the function through the queue
-        self._iq.put(dill.dumps(f))
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
 
         # retrieve the result of the function call
-        result = self._oq.get()
+        result = self._child.oq.get()
+
+        # join the child process with the main process
+        self._child.join()
+
         if result:
             logging.log(logging.INFO, f'camera[{self._device}] released')
         else:
             logging.log(logging.ERROR, f'failed to release camera[{self._device}]')
-
-        # clean up
-        self.join()
-
-        return
-
-    def join(self):
-        """
-        override the join method and add some additional functionality
-        """
-
-        # break out of the main loop
-        self.started = False
-
-        # join the thread
-        super().join(timeout=5)
-
-        # check if it has deadlocked
-        if self.is_alive():
-            logging.log(logging.ERROR, 'child process deadlocked')
-            self.terminate()
 
         return
 
@@ -284,11 +274,12 @@ class CameraBase(mp.Process):
     @property
     def framerate(self):
 
-        def f(camera):
+        def f(camera, *args, **kwargs):
             return camera.AcquisitionFrameRate.GetValue()
 
-        self._iq.put(dill.dumps(f))
-        value = int(np.around(self._oq.get()))
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        value = int(np.around(self._child.oq.get()))
 
         #
         if value != self._framerate:
@@ -300,7 +291,8 @@ class CameraBase(mp.Process):
     @framerate.setter
     def framerate(self, value):
 
-        def f(camera, value):
+        def f(camera, *args, **kwargs):
+            value = kwargs['value']
             if not camera.AcquisitionFrameRateEnable.GetValue():
                 camera.AcquisitionFrameRateEnable.SetValue(True)
             min = camera.AcquisitionFrameRate.GetMin()
@@ -318,12 +310,12 @@ class CameraBase(mp.Process):
                     return False
 
         #
-        args = [value]
-        item = (dill.dumps(f), args, {})
-        self._iq.put(item)
+        kwargs = {'value' : value}
+        item   = (dill.dumps(f), [], kwargs)
+        self._child.iq.put(item)
 
         #
-        result = self._oq.get()
+        result = self._child.oq.get()
         if result:
             self._framerate = value
             logging.log(logging.INFO, f'camera[{self._device}] framerate set to {value}')
@@ -336,11 +328,12 @@ class CameraBase(mp.Process):
     @property
     def exposure(self):
 
-        def f(camera):
+        def f(camera, *args, **kwargs):
             return camera.ExposureTime.GetValue()
 
-        self._iq.put(dill.dumps(f))
-        value = int(np.around(self._oq.get()))
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        value = int(np.around(self._child.oq.get()))
 
         #
         if value != self._exposure:
@@ -353,13 +346,14 @@ class CameraBase(mp.Process):
     @property
     def binsize(self):
 
-        def f(camera):
+        def f(camera, *args, **kwargs):
             x = camera.BinningHorizontal.GetValue()
             y = camera.BinningVertical.GetValue()
             return (x, y)
 
-        self._iq.put(dill.dumps(f))
-        value = self._oq.get()
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        value = self._child.oq.get()
 
         #
         if value != self._binsize:
@@ -372,83 +366,44 @@ class CameraBase(mp.Process):
     @property
     def roi(self):
 
-        def f(camera):
+        def f(camera, *args, **kwargs):
             x = camera.OffsetX.GetValue()
             y = camera.OffsetY.GetValue()
             w = camera.Width.GetValue()
             h = camera.Height.GetValue()
             return (x, y, w, h)
 
-        self._iq.put(dill.dumps(f))
-        value = self._oq.get()
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        value = self._child.oq.get()
 
         #
         if value != self._roi:
             logging.log(logging.ERROR, f'actual camera roi parameters ({value}) do not equal the target parameters of {self._roi}')
             return
 
+        # set the new width and height values
+        x, y, w, h   = value
+        self._width  = w
+        self._height = h
+
         return value
 
     # width
     @property
     def width(self):
-        x, y, w, h = self.roi
-        return w
+        return self._width
 
     # height
     @property
     def height(self):
-        x, y, w, h = self.roi
-        return h
+        return self._height
 
-    # started flag which maintains the main loop
+    # acquisition flag
     @property
-    def started(self):
-        return True if self._started.value == 1 else False
-
-    @started.setter
-    def started(self, flag):
-        if flag not in [0, 1, True, False]:
-            raise ValueError('started flag can only be set to 0, 1, True, or False')
-        self._started.value = 1 if flag == True else 0
-
-    # acquiring flag which maintains the acquisition loop
-    @property
-    def acquiring(self): return True if self._acquiring.value == 1 else False
+    def acquiring(self):
+        return True if self._acquiring.value == 1 else False
 
     @acquiring.setter
     def acquiring(self, value):
-        self._acquiring.value = 1 if value == True else False
-
-    # acquisition lock state
-    @property
-    def locked(self):
-        return True if self._lock.locked() else False
-
-    @locked.setter
-    def locked(self, value):
-
-        # engage the lock
-        if value == True:
-            if self.locked:
-                logging.log(logging.INFO, 'acquisition lock is already engaged')
-                return
-            result = self._lock.acquire(block=False)
-            if result:
-                logging.log(logging.INFO, 'acquisition lock engaged')
-            else:
-                logging.log(logging.WARNING, 'failed to engage acquisition lock')
-
-        # disengage the lock
-        elif value == False:
-            if not self.locked:
-                logging.log(logging.INFO, 'acquisition lock is not engaged')
-                return
-            try:
-                self._lock.release()
-                logging.log(logging.INFO, 'acquisition lock disengaged')
-            except ValueError:
-                logging.log(logging.WARNING, 'failed to disengage acquisition lock')
-
-        else:
-            raise ValueError('invalid acquisition lock state')
+        self._acquiring.value = 1 if value == True else 0

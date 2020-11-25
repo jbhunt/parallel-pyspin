@@ -23,15 +23,43 @@ class ChildProcess(mp.Process):
 
         super().__init__()
 
-        self._device  = device
-        self._started = mp.Value('i', 0)
+        self._device = device
+
+        # determine the maximum image size
+
 
         # io queues
         self.iq = mp.Queue()
         self.oq = mp.Queue()
 
-        # image buffer
-        self.buffer = mp.Array('i', 5000000)
+        #
+        self.started   = mp.Value('i', 0)
+        self.acquiring = mp.Value('i', 0)
+
+        # create an image buffer
+        self._createBuffer()
+
+        return
+
+    def _createBuffer(self):
+        """
+        """
+
+        system  = PySpin.System.GetInstance()
+        cameras = system.GetCameras()
+        camera  = cameras.GetByIndex(self._device)
+        camera.Init()
+        w = camera.Width.GetMax()
+        h = camera.Height.GetMax()
+        camera.DeInit()
+        size = int(w * h)
+        del w; del h
+        self.buffer = mp.Array('i', size)
+        del camera
+        cameras.Clear()
+        del cameras
+        system.ReleaseInstance()
+        del system
 
         return
 
@@ -40,18 +68,16 @@ class ChildProcess(mp.Process):
         override the start method
         """
 
-        self.started = True
+        self.started.value = 1
 
         super().start()
-
-        return
 
     def join(self, timeout=0):
         """
         override the join method
         """
 
-        self.started = False
+        self.started.value = 0
 
         super().join(timeout)
 
@@ -95,7 +121,7 @@ class ChildProcess(mp.Process):
             return
 
         # main loop
-        while self.started:
+        while self.started.value:
 
             try:
 
@@ -104,12 +130,8 @@ class ChildProcess(mp.Process):
 
                 # call the function
                 dilled, args, kwargs = item
-
-                # NOTE - the image buffer is inserted into the kwargs
-                kwargs['buffer'] = self.buffer
-
                 f = dill.loads(dilled)
-                result = f(camera, *args, **kwargs)
+                result = f(self, camera, *args, **kwargs)
 
                 # output
                 self.oq.put(result)
@@ -129,16 +151,9 @@ class ChildProcess(mp.Process):
 
         return
 
-    @property
-    def started(self):
-        return True if self._started.value == 1 else False
-
-    @started.setter
-    def started(self, value):
-        self._started.value = value
-
 class MainProcess(object):
     """
+    this class houses the interface with the child process
     """
 
     def __init__(self, device):
@@ -150,17 +165,11 @@ class MainProcess(object):
         #
         self._device = device
 
-        # instantiate a manager for sharing proxy objects betweeen processes
-        self._manager = mp.Manager()
-
         # parameters (determined during initialization)
         self._framerate = None
         self._exposure  = None
         self._binsize   = None
         self._roi       = None
-
-        #
-        self._acquiring = self._manager.Value('i', 0)
 
         return
 
@@ -172,7 +181,7 @@ class MainProcess(object):
         self._child = ChildProcess(self._device)
         self._child.start()
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             try:
 
                 #
@@ -240,11 +249,11 @@ class MainProcess(object):
         """
         """
 
-        if not self._child.started:
+        if not self._child.started.value:
             logging.log(logging.DEBUG, 'no active child process')
             return
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             try:
                 if camera.IsStreaming():
                     camera.EndAcquisition()
@@ -274,14 +283,20 @@ class MainProcess(object):
     @property
     def framerate(self):
 
-        def f(camera, *args, **kwargs):
-            return camera.AcquisitionFrameRate.GetValue()
+        def f(obj, camera, *args, **kwargs):
+            try:
+                value = camera.AcquisitionFrameRate.GetValue()
+            except PySpin.SpinnakerException:
+                value = None
+            return value
 
         item = (dill.dumps(f), [], {})
         self._child.iq.put(item)
         value = int(np.around(self._child.oq.get()))
 
         #
+        if value == None:
+            logging.log(logging.ERROR, f'framerate query failed')
         if value != self._framerate:
             logging.log(logging.ERROR, f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps')
             return
@@ -291,7 +306,7 @@ class MainProcess(object):
     @framerate.setter
     def framerate(self, value):
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             value = kwargs['value']
             if not camera.AcquisitionFrameRateEnable.GetValue():
                 camera.AcquisitionFrameRateEnable.SetValue(True)
@@ -328,7 +343,7 @@ class MainProcess(object):
     @property
     def exposure(self):
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             return camera.ExposureTime.GetValue()
 
         item = (dill.dumps(f), [], {})
@@ -346,7 +361,7 @@ class MainProcess(object):
     @property
     def binsize(self):
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             x = camera.BinningHorizontal.GetValue()
             y = camera.BinningVertical.GetValue()
             return (x, y)
@@ -366,7 +381,7 @@ class MainProcess(object):
     @property
     def roi(self):
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             x = camera.OffsetX.GetValue()
             y = camera.OffsetY.GetValue()
             w = camera.Width.GetValue()
@@ -402,8 +417,8 @@ class MainProcess(object):
     # acquisition flag
     @property
     def acquiring(self):
-        return True if self._acquiring.value == 1 else False
+        return True if self._child.acquiring.value == 1 else False
 
     @acquiring.setter
     def acquiring(self, value):
-        self._acquiring.value = 1 if value == True else 0
+        self._child.acquiring.value = 1 if value == True else 0

@@ -21,7 +21,9 @@ class VideoStream(MainProcess):
 
         super().__init__(device)
 
+        # initialize the camera and open the stream
         self._initialize()
+        self.open()
 
         return
 
@@ -29,18 +31,22 @@ class VideoStream(MainProcess):
         """
         """
 
-        # initialize the camera if needed
-        if not self._child.started:
+        #
+        if self._child.acquiring.value:
+            logging.log(logging.INFO, 'stream is already open')
+            return
+
+        # spawn a child process if needed
+        if not self._child.started.value:
             self._initialize()
 
         # set the acquisition flag
-        self.acquiring = True
+        self._child.acquiring.value = 1
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
 
             # unpack the kwargs
-            shape     = kwargs['shape']
-            acquiring = kwargs['acquiring']
+            shape = kwargs['shape']
 
             # size of the image (i.e., total number of pixels)
             size = shape[0] * shape[1]
@@ -49,7 +55,7 @@ class VideoStream(MainProcess):
                 camera.BeginAcquisition()
 
                 # main acquisition loop
-                while acquiring.value:
+                while obj.acquiring.value:
 
                     try:
                         image = camera.GetNextImage(1)
@@ -63,19 +69,16 @@ class VideoStream(MainProcess):
                         data = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray().flatten()
 
                         # store the image (critical - use lock)
-                        with buffer.get_lock():
-                            buffer[:size] = data
+                        with obj.buffer.get_lock():
+                            obj.buffer[:size] = data
 
                 return True
 
             except:
-                return False
+               return False
 
         # pack the kwargs
-        kwargs = {
-            'shape'     : (self.height, self.width),
-            'acquiring' : self._acquiring
-        }
+        kwargs = {'shape' : (self.height, self.width)}
         item = (dill.dumps(f), [], kwargs)
         self._child.iq.put(item)
 
@@ -85,16 +88,17 @@ class VideoStream(MainProcess):
         """
         """
 
-        if not self.acquiring:
+        if not self._child.acquiring.value:
+            logging.log(logging.INFO, 'stream is not open')
             return
 
-        self.acquiring = False
+        self._child.acquiring.value = False
 
         result = self._child.oq.get()
         if not result:
             logging.log(logging.ERROR, f'acquisition for camera[{self._device}] failed')
 
-        def f(camera, *args, **kwargs):
+        def f(obj, camera, *args, **kwargs):
             try:
                 camera.EndAcquisition()
                 return True
@@ -116,12 +120,11 @@ class VideoStream(MainProcess):
         """
         """
 
-        if not self.acquiring:
+        if not self._child.acquiring.value:
             logging.log(logging.INFO, 'stream is closed')
             return (False, None)
 
         # the lock blocks if a new image is being written to the image attribute
-        # with self._buffer_lock:
         with self._child.buffer.get_lock():
             data = self._child.buffer[:][:self.width * self.height]
             image = np.array(data, dtype=np.uint8).reshape([self.height, self.width])

@@ -6,10 +6,50 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import MainProcess
+from ._processes  import MainProcess, ChildProcess
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+
+#
+class ChildProcessStreaming(ChildProcess):
+    """
+    """
+
+    def __init__(self, device):
+        """
+        """
+
+        # create an image buffer
+        self._createBuffer()
+
+        #
+        super().__init__(device)
+
+        return
+
+    def _createBuffer(self):
+        """
+        this method determines the size of the image buffer on instantiation
+        """
+
+        system  = PySpin.System.GetInstance()
+        cameras = system.GetCameras()
+        camera  = cameras.GetByIndex(self._device)
+        camera.Init()
+        w = camera.Width.GetMax()
+        h = camera.Height.GetMax()
+        camera.DeInit()
+        size = int(w * h)
+        del w; del h
+        self.buffer = mp.Array('i', size)
+        del camera
+        cameras.Clear()
+        del cameras
+        system.ReleaseInstance()
+        del system
+
+        return
 
 class VideoStream(MainProcess):
     """
@@ -20,6 +60,9 @@ class VideoStream(MainProcess):
         """
 
         super().__init__(device)
+
+        # override the child process class specification
+        self._childClass = ChildProcessStreaming
 
         # initialize the camera and open the stream
         self._initialize()

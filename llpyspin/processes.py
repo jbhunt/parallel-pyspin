@@ -6,12 +6,23 @@ import logging
 import numpy as np
 import multiprocessing as mp
 
-# shared flags
-ACQUIRING = mp.Value('i', 0)
-BUFFER    = mp.Array('i', 1080 * 1440)
-
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+
+# this is the acquisition flag shared among all cameras
+ACQUIRING = mp.Value('i', 0)
+
+class AcquisitionPropertyError(Exception):
+    """
+    """
+
+    def __init__(self, message):
+        """
+        """
+
+        super().__init__(message)
+
+        return
 
 class ChildProcess(mp.Process):
     """
@@ -25,41 +36,13 @@ class ChildProcess(mp.Process):
 
         self._device = device
 
-        # determine the maximum image size
-
-
         # io queues
         self.iq = mp.Queue()
         self.oq = mp.Queue()
 
         #
         self.started   = mp.Value('i', 0)
-        self.acquiring = mp.Value('i', 0)
-
-        # create an image buffer
-        self._createBuffer()
-
-        return
-
-    def _createBuffer(self):
-        """
-        """
-
-        system  = PySpin.System.GetInstance()
-        cameras = system.GetCameras()
-        camera  = cameras.GetByIndex(self._device)
-        camera.Init()
-        w = camera.Width.GetMax()
-        h = camera.Height.GetMax()
-        camera.DeInit()
-        size = int(w * h)
-        del w; del h
-        self.buffer = mp.Array('i', size)
-        del camera
-        cameras.Clear()
-        del cameras
-        system.ReleaseInstance()
-        del system
+        self.acquiring = ACQUIRING
 
         return
 
@@ -162,7 +145,7 @@ class MainProcess(object):
 
         super().__init__()
 
-        #
+        # device index or serial no
         self._device = device
 
         # parameters (determined during initialization)
@@ -171,6 +154,12 @@ class MainProcess(object):
         self._binsize   = None
         self._roi       = None
 
+        # acquisition lock state
+        self._locked = False
+
+        # default class for the child process
+        self._childClass = ChildProcess
+
         return
 
     def _initialize(self):
@@ -178,7 +167,7 @@ class MainProcess(object):
         """
 
         # create and start the child process
-        self._child = ChildProcess(self._device)
+        self._child = self._childClass(self._device)
         self._child.start()
 
         def f(obj, camera, *args, **kwargs):
@@ -306,6 +295,9 @@ class MainProcess(object):
     @framerate.setter
     def framerate(self, value):
 
+        if self._locked:
+            raise AcquisitionPropertyError(f'acquisition lock is engaged')
+
         def f(obj, camera, *args, **kwargs):
             value = kwargs['value']
             if not camera.AcquisitionFrameRateEnable.GetValue():
@@ -414,11 +406,7 @@ class MainProcess(object):
     def height(self):
         return self._height
 
-    # acquisition flag
+    #
     @property
-    def acquiring(self):
-        return True if self._child.acquiring.value == 1 else False
-
-    @acquiring.setter
-    def acquiring(self, value):
-        self._child.acquiring.value = 1 if value == True else 0
+    def locked:
+        return self._locked

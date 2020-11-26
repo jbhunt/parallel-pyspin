@@ -1,254 +1,148 @@
-import queue
-import ctypes
+import PySpin
 import logging
 import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import CameraBase
-from ._spinnaker  import SpinnakerMixin
-from ._properties import PropertiesMixin, AcquisitionProperty
-
-#
+from ._processes  import MainProcess, ChildProcess
 from . import recording
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
-# try to import the PySpin package
-try:
-    import PySpin
-except ModuleNotFoundError:
-    logging.error('PySpin import failed.')
-
-class SecondaryCamera(CameraBase, PropertiesMixin, SpinnakerMixin):
+class SecondaryCameraV2(MainProcess):
     """
     """
 
-    def __init__(self, device=0):
+    def __init__(self, device):
         """
         """
 
         super().__init__(device)
 
-        # private attributes
-        self._primed   = False
-        self._filename = mp.Value(ctypes.c_char_p, None)
-        self._nickname = '<nickname>'
+        # start the child process
+        self._initialize()
 
-        logging.info('creating secondary camera')
+        # unset these property values (they are determined by the primary camera)
+        self._framerate = None
+        self._exposure  = None
 
-        # create the child process
-        self._spawn()
-
-        # attempt to initialize the camera
-        self._iq.put('initialize')
-        if self._result == False:
-            logging.error('camera initialization failed')
-            return
-
-        self.framerate = 60
-        self.exposure  = 1500
-        self.binsize   = None
-
-        return
-
-    ### private methods ###
-
-    def _start(self, camera):
-        """
-        """
-
-        args = self._iq.get()
-        writer = recording.VideoWriter(*args)
-
-        # configure the hardware trigger
-        camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
-        camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
-        camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
-        camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
-
-        # begin acquisition
-        camera.BeginAcquisition()
-
-        txtfile = open('/home/polegpolskylab/Desktop/cam2.txt', 'w')
-
-        # main loop
-        while self.acquiring == True:
-
-            # There's a 1 ms timeout for the call to GetNextImage to prevent
-            # the secondary camera from blocking when video acquisition is
-            # aborted before the primary camera is triggered (see below).
-
+        # set the buffer handling mode to oldest first (instead of newest only)
+        def f(obj, camera, *args, **kwargs):
             try:
-                image = camera.GetNextImage(1) # timeout
+                camera.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+                return True
             except PySpin.SpinnakerException:
-                continue
+                return False
 
-            #
-            if not image.IsIncomplete():
-
-                # convert the image
-                frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
-                txtfile.write(str(frame.GetTimeStamp()) + '\n')
-
-                #
-                writer.write(frame)
-
-            # release the image
-            image.Release()
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'failed to set the buffer handling mode')
 
         #
-        while True:
-            try:
-                image = camera.GetNextImage(1000) # timeout
-            except PySpin.SpinnakerException:
-                break
-
-        writer.close()
+        self._primed = False
 
         return
-
-    def _stop(self, camera):
-        """
-        stop acquisition
-        """
-
-        # stop acquisition
-        if camera.IsStreaming():
-            camera.EndAcquisition()
-
-        # deconfigure the trigger
-        if camera.TriggerMode.GetValue() == PySpin.TriggerMode_On:
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-
-        return
-
-    ### public methods ###
 
     def prime(self, filename):
         """
-        prime the camera for video recording
         """
 
-        # check that the camera isn't acquiring
-        # if self.primed == True:
-        #     logging.info('camera is already primed')
-        #     return
+        if self.primed:
+            logging.log(logging.WARNING, f'camera[{self._device}] is already primed')
 
-        if not filename.endswith('.avi'):
-            raise ValueError('filename string must end with ".avi" extension')
+        def f(obj, camera, *args, **kwargs):
+        
+            try:
 
-        # overwrite the current filename
-        self.filename = filename
+                #
+                writer = recording.VideoWriter(kwargs['filename'])
 
-        # set the acquiring flag to 1
-        # self.acquiring = True
+                # configure the hardware trigger
+                camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
+                camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
+                camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-        # send the acquisition command
-        self._iq.put('start')
+                # begin acquisition
+                camera.BeginAcquisition()
 
-        #
-        args = [filename, None, self.framerate, (self.roi[2:])]
-        self._iq.put(args)
+                # main loop
+                while obj.acquiring.value:
 
-        # acquire acquisition lock
-        self.locked = True
+                    # There's a 1 ms timeout for the call to GetNextImage to prevent
+                    # the secondary camera from blocking when video acquisition is
+                    # aborted before the primary camera is triggered (see below).
+
+                    try:
+                        image = camera.GetNextImage(1) # timeout
+                    except PySpin.SpinnakerException:
+                        continue
+
+                    #
+                    if not image.IsIncomplete():
+                        frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+                        writer.write(frame)
+
+                    # release the image
+                    image.Release()
+
+                #
+                writer.close()
+
+                return True
+
+            except PySpin.SpinnakerException:
+                return False
+
+        item = (dill.dumps(f), [], {'filename' : filename})
+        self._child.iq.put(item)
+
+        self._primed = True
 
         return
 
     def stop(self):
         """
-        stop video acquisition
         """
 
-        # check that the camera is acquiring
-        # if self.acquiring == False:
-        #     logging.info('video acquisition is already stopped')
-        #     return
-
-        # break out of the acquisition loop
-        # self.acquiring = False
-
-        # retreive the result (sent after exiting the acquisition loop)
-        if self._result == False:
-            logging.debug('video acquisition failed')
-
-        # stop acquisition
-        self._iq.put('stop')
-        if self._result == False:
-            logging.debug('video de-acquisition failed')
-
-        # release acquisition lock
-        self.locked = False
-
-        return
-
-    def release(self):
-        """
-        release the camera
-        """
-
-        if self.started == False:
-            logging.info('camera already released')
+        if not self._primed:
+            logging.log(logging.INFO, f'camera[{self._device}] is not primed')
             return
 
-        # stop acquisition if acquiring
-        if self.primed == True:
-            logging.info('stopping video acquisition')
-            self.stop()
+        # query the result of video acquisition
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'video acquisition for camera[{self._device}] failed')
 
-        #
-        self._iq.put('release')
-        if self._result == False:
-            logging.debug('camera de-initialization failed')
+        def f(obj, camera, *args, **kwargs):
+            try:
+                camera.EndAcquisition()
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+                return True
+            except:
+                return False
 
-        # stop and join the child process
-        self._kill()
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'video deacquisition for camera[{self._device}] failed')
+
+        self._primed = False
 
         return
 
-    # nickname
-    @property
-    def nickname(self):
-        return self._nickname
-    @nickname.setter
-    def nickname(self, value):
-        self._nickname = value
+    def close(self):
+        """
+        """
 
-    # filename
-    @property
-    def filename(self):
-        return self._filename.value.decode()
+        self._release()
 
-    @filename.setter
-    def filename(self, value):
-        if type(value) is not str:
-            raise ValueError('filename must be a string')
-        self._filename.value = value.encode()
+        return
 
-    # camera ready state
     @property
     def primed(self):
-        self._primed = True if self._child is not None and self.acquiring == 1 else False
         return self._primed
-
-    # overwrite the framerate and exposure properties
-
-    @AcquisitionProperty
-    def framerate(self):
-        return self._framerate
-
-    @framerate.setter
-    def framerate(self, value):
-        logging.debug('framerate is set by the primary camera')
-        self._framerate = value
-
-    @AcquisitionProperty
-    def exposure(self):
-        return self._exposure
-
-    @exposure.setter
-    def exposure(self, value):
-        logging.debug('exposure is set by the primary camera')
-        self._exposure = value

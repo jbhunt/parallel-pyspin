@@ -56,7 +56,7 @@ class VideoWriterPySpin():
             'bitrate'   : bitrate
         }
 
-        self.p = mp.Process(target=f, args=(self.started, self.q, **params))
+        self.p = mp.Process(target=f, args=(self.started, self.q, params))
         self.p.start()
 
         return self

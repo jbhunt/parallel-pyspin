@@ -408,5 +408,5 @@ class MainProcess(object):
 
     #
     @property
-    def locked:
+    def locked(self):
         return self._locked

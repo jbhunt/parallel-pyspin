@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import MainProcess, ChildProcess
-from . import recording
+from ._recording  import VideoWriterFFmpeg, VideoWriterPySpin
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -62,9 +62,9 @@ class SecondaryCamera(MainProcess):
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
-                    writer = recording.VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'])
+                    writer = VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'])
                 elif kwargs['backend'] == 'PySpin':
-                    writer = recording.VideoWriterPySpin().open(kwargs['filename'], kwargs['framerate'], kwargs['bitrate'])
+                    writer = VideoWriterPySpin().open(kwargs['filename'], kwargs['framerate'], kwargs['bitrate'])
                 else:
                     return False
 

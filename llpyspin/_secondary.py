@@ -10,7 +10,7 @@ from . import recording
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
-class SecondaryCameraV2(MainProcess):
+class SecondaryCamera(MainProcess):
     """
     """
 

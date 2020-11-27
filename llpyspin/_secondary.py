@@ -4,7 +4,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from .processes  import MainProcess, ChildProcess
+from ._processes  import MainProcess, ChildProcess
 from . import recording
 
 # logging setup

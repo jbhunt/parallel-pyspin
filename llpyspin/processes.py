@@ -10,7 +10,7 @@ import multiprocessing as mp
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
 # this is the acquisition flag shared among all cameras
-ACQUIRING = mp.Value('i', 0)
+_ACQUIRING = mp.Value('i', 0)
 
 class AcquisitionPropertyError(Exception):
     """
@@ -42,7 +42,7 @@ class ChildProcess(mp.Process):
 
         #
         self.started   = mp.Value('i', 0)
-        self.acquiring = ACQUIRING
+        self.acquiring = _ACQUIRING
 
         return
 

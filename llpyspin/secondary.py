@@ -4,7 +4,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import MainProcess, ChildProcess
+from .processes  import MainProcess, ChildProcess
 from . import recording
 
 # logging setup
@@ -46,19 +46,27 @@ class SecondaryCameraV2(MainProcess):
 
         return
 
-    def prime(self, filename):
+    def prime(self, filename, backend='ffmpeg'):
         """
         """
 
         if self.primed:
             logging.log(logging.WARNING, f'camera[{self._device}] is already primed')
 
+        if backend not in ['ffmpeg', 'PySpin']:
+            raise ValueError(f'{backend} is not a valid backend for writing video')
+
         def f(obj, camera, *args, **kwargs):
-        
+
             try:
 
-                #
-                writer = recording.VideoWriter(kwargs['filename'])
+                # initialize the video writer
+                if kwargs['backend'] == 'ffmpeg':
+                    writer = recording.VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'])
+                elif kwargs['backend'] == 'PySpin':
+                    writer = recording.VideoWriterPySpin().open(kwargs['filename'], kwargs['framerate'], kwargs['bitrate'])
+                else:
+                    return False
 
                 # configure the hardware trigger
                 camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
@@ -77,17 +85,13 @@ class SecondaryCameraV2(MainProcess):
                     # aborted before the primary camera is triggered (see below).
 
                     try:
-                        image = camera.GetNextImage(1) # timeout
+                        result = camera.GetNextImage(1) # timeout
                     except PySpin.SpinnakerException:
                         continue
 
                     #
                     if not image.IsIncomplete():
-                        frame = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
-                        writer.write(frame)
-
-                    # release the image
-                    image.Release()
+                        writer.write(result)
 
                 #
                 writer.close()
@@ -97,7 +101,14 @@ class SecondaryCameraV2(MainProcess):
             except PySpin.SpinnakerException:
                 return False
 
-        item = (dill.dumps(f), [], {'filename' : filename})
+        kwargs = {
+            'filename'  : filename,
+            'shape'     : (self.height, self.width),
+            'framerate' : 30,
+            'bitrate'   : 1000000,
+            'backend'   : 'ffmpeg'
+        }
+        item = (dill.dumps(f), [], kwargs)
         self._child.iq.put(item)
 
         self._primed = True

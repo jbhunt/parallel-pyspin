@@ -6,7 +6,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import MainProcess, ChildProcess
+from .processes  import MainProcess, ChildProcess
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)

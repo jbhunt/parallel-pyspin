@@ -106,8 +106,6 @@ class VideoWriterPySpin():
     def running(self):
         return True if hasattr(self, 'p') and self.p.is_alive() else False
 
-
-
 class VideoWriterFFmpeg(object):
     """
     """

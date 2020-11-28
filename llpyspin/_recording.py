@@ -5,16 +5,27 @@ import numpy as np
 import subprocess as sp
 import multiprocessing as mp
 
-def f(started, q, **params):
+def f(started, q, params):
     """
     target function for the VideoWriterPySpin class
     """
 
-    option = PySpin.H264Option()
-    option.bitrate = params['bitrate']
+    # select the appropriate codec
+    head, tail = params['filename'].split('.')
+    if tail == 'mp4':
+        option = PySpin.MJPGOption()
+        option.bitrate = params['bitrate']
+    elif tail == 'avi':
+        option = PySpin.AVIOption()
+    else:
+        option = PySpin.H264Option()
+        option.bitrate = params['bitrate']
+        option.height  = params['shape'][1]
+        option.width   = params['shape'][0]
+
     option.frameRate = params['framerate']
     recorder = PySpin.SpinVideo()
-    recorder.Open(filename, option)
+    recorder.Open(params['filename'], option)
 
     while started.value:
 
@@ -25,12 +36,15 @@ def f(started, q, **params):
             continue
 
         #
-        image = result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
-        recorder.write(image)
+        recorder.Append(result)
         result.Release()
+
+    #
+    recorder.Close()
 
     return
 
+# doesn't work
 class VideoWriterPySpin():
     """
     """
@@ -40,7 +54,7 @@ class VideoWriterPySpin():
         """
 
         self.q = mp.Queue()
-        self.started = mp.Value('i', 1)
+        self.started = mp.Value('i', 0)
 
         return
 
@@ -48,15 +62,17 @@ class VideoWriterPySpin():
         """
         """
 
-        if self.p.is_alive():
+        if self.running:
             return
 
         params = {
             'framerate' : framerate,
+            'filename'  : filename,
             'bitrate'   : bitrate
         }
 
         self.p = mp.Process(target=f, args=(self.started, self.q, params))
+        self.started.value = 1
         self.p.start()
 
         return self
@@ -65,7 +81,7 @@ class VideoWriterPySpin():
         """
         """
 
-        if not self.p.is_alive():
+        if not self.running:
             return
 
         self.q.put(result)
@@ -76,7 +92,7 @@ class VideoWriterPySpin():
         """
         """
 
-        if not self.p.is_alive():
+        if not self.running:
             return
 
         while self.q.qsize() != 0:
@@ -85,6 +101,12 @@ class VideoWriterPySpin():
         self.p.join()
 
         return
+
+    @property
+    def running(self):
+        return True if hasattr(self, 'p') and self.p.is_alive() else False
+
+
 
 class VideoWriterFFmpeg(object):
     """
@@ -96,7 +118,7 @@ class VideoWriterFFmpeg(object):
 
         return
 
-    def open(self, filename, shape=(540,720), framerate=30):
+    def open(self, filename, shape=(1080,1440), framerate=30, bitrate=1000000):
         """
         """
 
@@ -111,10 +133,11 @@ class VideoWriterFFmpeg(object):
             '-vcodec', 'rawvideo',
             '-s', f'{shape[1]}x{shape[0]}',
             '-r', f'{framerate}',
+            '-pix_fmt', 'rgb24',
             '-i', '-',
             '-filter:v', 'hue=s=0', # this is important - it converts the video to grayscale
             '-an',
-            '-vcodec', 'libx264',
+            '-vcodec', 'libx265',
             filename
         ]
 
@@ -133,10 +156,10 @@ class VideoWriterFFmpeg(object):
             gray = result
         else:
             gray = result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
-            result.Release()
 
-        data = np.stack((gray,) * 3, axis=-1).tostring()
-        self.p.stdin.write(data)
+        rgb = np.stack((gray,) * 3, axis=-1)
+
+        self.p.stdin.write(rgb.tostring())
 
         return
 

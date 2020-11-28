@@ -47,7 +47,7 @@ class PrimaryCamera(MainProcess):
         # set the buffer handling mode to oldest first (instead of newest only)
         def f(obj, camera, *args, **kwargs):
             try:
-                camera.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
                 return True
             except PySpin.SpinnakerException:
                 return False
@@ -115,7 +115,7 @@ class PrimaryCamera(MainProcess):
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
-                    writer = VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'])
+                    writer = VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
                 elif kwargs['backend'] == 'PySpin':
                     writer = VideoWriterPySpin().open(kwargs['filename'], kwargs['framerate'], kwargs['bitrate'])
                 else:
@@ -128,15 +128,19 @@ class PrimaryCamera(MainProcess):
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
                 # main acquisition loop
-                while self.acquiring.value:
+                while obj.acquiring.value:
 
                     try:
                         result = camera.GetNextImage(1)
                     except PySpin.SpinnakerException:
                         continue
 
-                    if not image.IsIncomplete():
-                        writer.write(result)
+                    if not result.IsIncomplete():
+                        image = result.GetNDArray()
+                        writer.write(image)
+
+                    result.Release()
+
 
                 # reset the trigger mode
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
@@ -161,6 +165,7 @@ class PrimaryCamera(MainProcess):
 
         #
         self._primed = True
+        self._locked = True
 
         return
 
@@ -172,6 +177,7 @@ class PrimaryCamera(MainProcess):
             logging.log(logging.INFO, f'camera[{self._device}] is not primed')
             return
 
+        self._child.acquiring.value = 1
         self._child.trigger.set()
 
         return
@@ -215,6 +221,7 @@ class PrimaryCamera(MainProcess):
             logging.log(logging.ERROR, f'video deacquisition for camera[{self._device}] failed')
 
         self._primed = False
+        self._locked = False
 
         return
 

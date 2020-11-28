@@ -272,6 +272,9 @@ class MainProcess(object):
     @property
     def framerate(self):
 
+        if self.locked:
+            return self._framerate
+
         def f(obj, camera, *args, **kwargs):
             try:
                 value = camera.AcquisitionFrameRate.GetValue()
@@ -295,7 +298,7 @@ class MainProcess(object):
     @framerate.setter
     def framerate(self, value):
 
-        if self._locked:
+        if self.locked:
             raise AcquisitionPropertyError(f'acquisition lock is engaged')
 
         def f(obj, camera, *args, **kwargs):
@@ -335,6 +338,9 @@ class MainProcess(object):
     @property
     def exposure(self):
 
+        if self.locked:
+            return self._exposure
+
         def f(obj, camera, *args, **kwargs):
             return camera.ExposureTime.GetValue()
 
@@ -352,6 +358,9 @@ class MainProcess(object):
     # binsize
     @property
     def binsize(self):
+
+        if self.locked:
+            return self._binsize
 
         def f(obj, camera, *args, **kwargs):
             x = camera.BinningHorizontal.GetValue()
@@ -372,6 +381,9 @@ class MainProcess(object):
     # roi
     @property
     def roi(self):
+
+        if self.locked:
+            return self._roi
 
         def f(obj, camera, *args, **kwargs):
             x = camera.OffsetX.GetValue()

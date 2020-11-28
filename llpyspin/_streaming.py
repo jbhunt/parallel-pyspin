@@ -20,36 +20,44 @@ class ChildProcessStreaming(ChildProcess):
         """
         """
 
-        # create an image buffer
-        self._createBuffer()
+        # create a shared memory array for storing a single image
+        self.buffer = self._createBuffer(device)
 
         #
         super().__init__(device)
 
         return
 
-    def _createBuffer(self):
+    def _createBuffer(self, device):
         """
         this method determines the size of the image buffer on instantiation
         """
 
-        system  = PySpin.System.GetInstance()
-        cameras = system.GetCameras()
-        camera  = cameras.GetByIndex(self._device)
-        camera.Init()
-        w = camera.Width.GetMax()
-        h = camera.Height.GetMax()
-        camera.DeInit()
-        size = int(w * h)
-        del w; del h
-        self.buffer = mp.Array('i', size)
-        del camera
-        cameras.Clear()
-        del cameras
-        system.ReleaseInstance()
-        del system
+        #
+        try:
+            system  = PySpin.System.GetInstance()
+            cameras = system.GetCameras()
+            camera  = cameras.GetByIndex(device)
+            camera.Init()
+            w = camera.Width.GetMax()
+            h = camera.Height.GetMax()
+            camera.DeInit()
+            size = int(w * h)
 
-        return
+            #
+            del w; del h
+            del camera
+            cameras.Clear()
+            del cameras
+            system.ReleaseInstance()
+            del system
+
+            return mp.Array('i', size)
+
+        # NOTE - If the above code block fails, the buffer size defaults to 25
+        # million pixels which should support up to the 244S8 Blackfly S USB3
+        except PySpin.SpinnakerException:
+            return mp.Array('i', 25 * 1000000)
 
 class VideoStream(MainProcess):
     """
@@ -125,6 +133,8 @@ class VideoStream(MainProcess):
         item = (dill.dumps(f), [], kwargs)
         self._child.iq.put(item)
 
+        self._locked = True
+
         return
 
     def close(self):
@@ -153,6 +163,8 @@ class VideoStream(MainProcess):
         result = self._child.oq.get()
         if not result:
             logging.log(logging.ERROR, f'video deacquisition for camera[{self._device}] failed')
+
+        self._locked = False
 
         # release the camera
         self._release()

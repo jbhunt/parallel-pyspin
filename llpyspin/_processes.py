@@ -287,14 +287,14 @@ class MainProcess(object):
 
         item = (dill.dumps(f), [], {})
         self._child.iq.put(item)
-        result, value = int(np.around(self._child.oq.get()))
+        result, value = self._child.oq.get()
 
         #
         if not result:
             logging.log(logging.ERROR, f'framerate query failed')
         else:
-            return value
-        if value != self._framerate:
+            return int(np.ceil(value))
+        if int(np.ceil(value)) != self._framerate:
             logging.log(logging.ERROR, f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps')
 
     @framerate.setter
@@ -350,13 +350,13 @@ class MainProcess(object):
 
         item = (dill.dumps(f), [], {})
         self._child.iq.put(item)
-        result, value = int(np.around(self._child.oq.get()))
+        result, value = self._child.oq.get()
 
         #
         if not result:
             logging.log(logging.ERROR, f'failed to get exposure value from camera[{self._device}]')
         else:
-            return value
+            return int(np.ceil(value))
 
     @exposure.setter
     def exposure(self, value):
@@ -396,20 +396,22 @@ class MainProcess(object):
             return self._binsize
 
         def f(obj, camera, *args, **kwargs):
-            x = camera.BinningHorizontal.GetValue()
-            y = camera.BinningVertical.GetValue()
-            return (x, y)
+            try:
+                x = camera.BinningHorizontal.GetValue()
+                y = camera.BinningVertical.GetValue()
+                return True (x, y)
+            except PySpin.SpinnakerException:
+                return False, None
 
         item = (dill.dumps(f), [], {})
         self._child.iq.put(item)
-        value = self._child.oq.get()
+        result, value = self._child.oq.get()
 
         #
-        if value != self._binsize:
-            logging.log(logging.ERROR, f'actual camera binsize of {value} pixels does not equal the target binsize of {self._binsize} pixels')
-            return
-
-        return value
+        if not result:
+            logging.log(logging.ERROR, f'failed to query exposure for camera[{self._device}]')
+        else:
+            return value
 
     @binsize.setter
     def binsize(self, value):
@@ -518,10 +520,12 @@ class MainProcess(object):
         result = self._child.oq.get()
         if not result:
             logging.log(logging.ERROR, f'failed to set the roi parameters to {value} for camera[{self._device}]')
+        else:
+            self._roi = value
 
         return
 
-    # width
+    # width (read-only)
     @property
     def width(self):
 
@@ -543,7 +547,7 @@ class MainProcess(object):
         else:
             return value
 
-    # height
+    # height (read-only)
     @property
     def height(self):
 

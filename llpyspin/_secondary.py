@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import MainProcess, ChildProcess
-from ._recording  import VideoWriterFFmpeg, VideoWriterPySpin
+from ._recording  import VideoWriterFFmpeg, VideoWriterSpinnaker
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -19,6 +19,20 @@ class SecondaryCamera(MainProcess):
         """
 
         super().__init__(device)
+
+        self.open()
+
+        self._primed = False
+
+        return
+
+    def open(self):
+        """
+        """
+
+        if self._child.started.value:
+            logging.log(logging.INFO, f'camera[{self._device}] is already open')
+            return
 
         # start the child process
         self._initialize()
@@ -41,12 +55,9 @@ class SecondaryCamera(MainProcess):
         if not result:
             logging.log(logging.ERROR, f'failed to set the buffer handling mode')
 
-        #
-        self._primed = False
-
         return
 
-    def prime(self, filename, backend='ffmpeg'):
+    def prime(self, filename, framerate, bitrate=1000000, backend='ffmpeg'):
         """
         """
 
@@ -62,11 +73,12 @@ class SecondaryCamera(MainProcess):
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
-                    writer = VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'])
+                    writer = VideoWriterFFmpeg()
                 elif kwargs['backend'] == 'PySpin':
-                    writer = VideoWriterPySpin().open(kwargs['filename'], kwargs['framerate'], kwargs['bitrate'])
+                    writer = VideoWriterSpinnaker()
                 else:
                     return False
+                writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
                 # configure the hardware trigger
                 camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
@@ -90,8 +102,9 @@ class SecondaryCamera(MainProcess):
                         continue
 
                     #
-                    if not image.IsIncomplete():
-                        writer.write(result)
+                    if not result.IsIncomplete():
+                        image = result.GetNDArray()
+                        writer.write(image)
 
                 #
                 writer.close()
@@ -104,14 +117,15 @@ class SecondaryCamera(MainProcess):
         kwargs = {
             'filename'  : filename,
             'shape'     : (self.height, self.width),
-            'framerate' : 30,
-            'bitrate'   : 1000000,
-            'backend'   : 'ffmpeg'
+            'framerate' : framerate,
+            'bitrate'   : bitrate,
+            'backend'   : backend
         }
         item = (dill.dumps(f), [], kwargs)
         self._child.iq.put(item)
 
         self._primed = True
+        self._locked = True
 
         return
 
@@ -122,6 +136,9 @@ class SecondaryCamera(MainProcess):
         if not self._primed:
             logging.log(logging.INFO, f'camera[{self._device}] is not primed')
             return
+
+        # stop acquisition
+        self._child.acquiring.value = 0
 
         # query the result of video acquisition
         result = self._child.oq.get()
@@ -143,6 +160,7 @@ class SecondaryCamera(MainProcess):
             logging.log(logging.ERROR, f'video deacquisition for camera[{self._device}] failed')
 
         self._primed = False
+        self._locked = False
 
         return
 

@@ -7,7 +7,7 @@ import multiprocessing as mp
 
 # relative imports
 from ._processes  import MainProcess, ChildProcess
-from ._recording  import VideoWriterFFmpeg, VideoWriterPySpin
+from ._recording  import VideoWriterFFmpeg, VideoWriterSpinnaker
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -38,6 +38,18 @@ class PrimaryCamera(MainProcess):
 
         super().__init__(device)
 
+        self.open()
+
+        return
+
+    def open(self):
+        """
+        """
+
+        if self._child.started.value:
+            logging.log(logging.INFO, f'camera[{self._device}] is already open')
+            return
+
         # override the child process class specification
         self._childClass = ChildProcessPrimary
 
@@ -63,14 +75,14 @@ class PrimaryCamera(MainProcess):
 
         return
 
-    def prime(self, filename, backend='ffmpeg'):
+    def prime(self, filename, bitrate=1000000, backend='ffmpeg'):
         """
         """
 
         if self.primed:
             logging.log(logging.WARNING, f'camera[{self._device}] is already primed')
 
-        if backend not in ['ffmpeg', 'PySpin']:
+        if backend not in ['ffmpeg', 'spinnaker']:
             raise ValueError(f'{backend} is not a valid backend for writing video')
 
         def f(obj, camera, *args, **kwargs):
@@ -115,11 +127,12 @@ class PrimaryCamera(MainProcess):
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
-                    writer = VideoWriterFFmpeg().open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
+                    writer = VideoWriterFFmpeg()
                 elif kwargs['backend'] == 'PySpin':
-                    writer = VideoWriterPySpin().open(kwargs['filename'], kwargs['framerate'], kwargs['bitrate'])
+                    writer = VideoWriterSpinnaker()
                 else:
                     return False
+                writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
                 # wait for the trigger event
                 obj.trigger.wait()
@@ -157,8 +170,8 @@ class PrimaryCamera(MainProcess):
             'filename'  : filename,
             'shape'     : (self.height, self.width),
             'framerate' : self.framerate,
-            'bitrate'   : 1000000,
-            'backend'   : 'ffmpeg'
+            'bitrate'   : bitrate,
+            'backend'   : backend
         }
         item = (dill.dumps(f), [], kwargs)
         self._child.iq.put(item)

@@ -1,93 +1,74 @@
+import dill
 import types
 import queue
+import PySpin
 import logging
 import numpy as np
 import multiprocessing as mp
 
-# shared flags
-_ACQUIRING = mp.Value('i', 0)
-
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
 
-# try to import the PySpin package
-try:
-    import PySpin
-except ModuleNotFoundError:
-    logging.error('PySpin import failed.')
+# this is the acquisition flag shared among all cameras
+_ACQUIRING = mp.Value('i', 0)
 
-class SubprocessError(Exception):
-    """error raised for failed attempt to create child process"""
+class AcquisitionPropertyError(Exception):
+    """
+    """
+
     def __init__(self, message):
+        """
+        """
+
         super().__init__(message)
-        self.message = message
+
         return
 
-class PropertyError(Exception):
-    """error raised for failed attempts to set the value of an acquisition property"""
+class ChildProcess(mp.Process):
+    """
+    """
 
-    def __init__(self, property, value):
+    def __init__(self, device=0):
+        """
+        """
+
         super().__init__()
-        self.message = f'{value} is not a valid value for {property}'
-        return
 
-class CameraBase():
-    """
-    this is the base class for any subclass of camera which handles the creation,
-    operation, and destruction of the child process
-    """
+        self._device   = device
+        self._nickname = f'camera[{device}]'
 
-    def __init__(self, device):
-        """
-        keywords
-        --------
-        device : int or str
-            the camera's index or serial number
-        """
+        # io queues
+        self.iq = mp.Queue()
+        self.oq = mp.Queue()
 
-        self.device = device
-
-        # global variables
-        global _ACQUIRING
-
-        # private attributes
-
-        self._child           = None            # attribute which holds the reference to the child process
-
-        self._started         = mp.Value('i',0) # this flag controls the main loop in the run method
-        # self._acquiring       = mp.Value('i',0) # this flag controls the acquisition loop in the _start method
-        self._acquiring       = _ACQUIRING
-
-        self._lock            = mp.Lock()       # acquisition lock
-        self._locked          = False           # acquisition lock state
-
-        self._iq              = mp.Queue()      # input queue
-        self._oq              = mp.Queue()      # output queue
-
-        # acquisition property private values
-        self._framerate = None
-        self._exposure  = None
-        self._binsize   = None
-        self._roi       = None
-
-        # alternative naming
-        # self._fps             = None
-        # self._bin             = None
-        # self._exp             = None
+        #
+        self.started   = mp.Value('i', 0)
+        self.acquiring = _ACQUIRING
 
         return
 
-    # TODO : the more I think about this, the more I think the child process
-    #        should be made into its own class
-
-    def _run(self):
+    def start(self):
         """
-        target function for the child process
+        override the start method
+        """
 
-        notes
-        -----
-        Do not make logging calls (e.g., 'logging.info(<some informative message>)')
-        within this method. Writing to stdout is not a process-safe operation.
+        self.started.value = 1
+
+        super().start()
+
+    def join(self, timeout=0):
+        """
+        override the join method
+        """
+
+        self.started.value = 0
+
+        super().join(timeout)
+
+        return
+
+    def run(self):
+        """
         """
 
         try:
@@ -100,14 +81,11 @@ class CameraBase():
             assert len(cameras) != 0
 
             # instantiate the camera
-            if type(self.device) == str:
-                camera = cameras.GetBySerial(self.device)
+            if type(self._device) == str:
+                camera = cameras.GetBySerial(self._device)
 
-            if type(self.device) == int:
-                camera = cameras.GetByIndex(self.device)
-
-            # send the result back
-            self._oq.put(True)
+            if type(self._device) == int:
+                camera = cameras.GetByIndex(self._device)
 
         except:
 
@@ -119,37 +97,31 @@ class CameraBase():
             cameras.Clear()
             del cameras
             system.ReleaseInstance()
+            del system
 
-            # send the result back
-            self._oq.put(False)
+            # reset the started flag
+            self.started = False
 
             return
 
-        # set the started flag to True
-        self.started = True
-
         # main loop
-        while self.started:
+        while self.started.value:
 
-            # listen for method calls from the main process
             try:
-                item = self._iq.get(block=False)
-                # print(item)
+
+                # input
+                item = self.iq.get(block=False)
+
+                # call the function
+                dilled, args, kwargs = item
+                f = dill.loads(dilled)
+                result = f(self, camera, *args, **kwargs)
+
+                # output
+                self.oq.put(result)
 
             except queue.Empty:
                 continue
-
-            # call the appropriate method
-            try:
-                method = self.__getattribute__('_' + item)
-                method(camera)
-                self._oq.put(True)
-
-            # except PySpin.SpinnakerException:
-            except:
-                self._oq.put(False)
-
-            continue
 
         # clean up
         try:
@@ -159,164 +131,448 @@ class CameraBase():
         cameras.Clear()
         del cameras
         system.ReleaseInstance()
+        del system
 
         return
 
-    def _spawn(self):
+class MainProcess(object):
+    """
+    this class houses the interface with the child process
+    """
+
+    def __init__(self, device):
         """
-        spawn the child process
         """
 
-        if self._child != None:
-            logging.debug('active child process detected')
-            return
+        super().__init__()
 
-        logging.debug('creating the child process')
+        # device index or serial no
+        self._device = device
 
-        # create the child process
-        self._child = mp.Process(target=self._run,args=())
+        # parameters (determined during initialization)
+        self._framerate = None
+        self._exposure  = None
+        self._binsize   = None
+        self._roi       = None
 
-        # make the child a daemon process
-        self._child.daemon = True
+        # acquisition lock state
+        self._locked = False
 
-        # start the child process
+        # default class for the child process
+        self._childClass = ChildProcess
+
+        return
+
+    def _initialize(self):
+        """
+        """
+
+        # create and start the child process
+        self._child = self._childClass(self._device)
         self._child.start()
 
-        # the child will send back the result of the fork
-        result = self._oq.get()
-        if result == False:
-            raise SubprocessError('failed to spawn child process')
+        def f(obj, camera, *args, **kwargs):
+            try:
+
+                #
+                camera.Init()
+
+                #
+                camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
+                camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
+                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestOnly)
+
+                # set the exposure
+                camera.ExposureAuto.SetValue(PySpin.ExposureAuto_Off)
+                camera.AcquisitionFrameRateEnable.SetValue(False)
+                camera.ExposureTime.SetValue(3000)
+
+                # set the framerate
+                camera.AcquisitionFrameRateEnable.SetValue(True)
+                camera.AcquisitionFrameRate.SetValue(1)
+
+                #
+                x = camera.OffsetX.GetValue()
+                y = camera.OffsetY.GetValue()
+                w = camera.Width.GetValue()
+                h = camera.Height.GetValue()
+
+                #
+                roi = (x, y, w, h)
+                framerate = int(np.around(camera.AcquisitionFrameRate.GetValue()))
+                exposure  = int(np.around(camera.ExposureTime.GetValue()))
+                binsize   = (camera.BinningHorizontal.GetValue(), camera.BinningVertical.GetValue())
+
+                #
+                parameters = {
+                    'framerate' : framerate,
+                    'exposure'  : exposure,
+                    'binsize'   : binsize,
+                    'roi'       : roi,
+                }
+
+                return True, parameters
+
+            except PySpin.SpinnakerException:
+                return False, None
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result, parameters = self._child.oq.get()
+
+        # set all property values
+        if result:
+            logging.log(logging.INFO, f'camera[{self._device}] initialized')
+            self._framerate = parameters['framerate']
+            self._exposure  = parameters['exposure']
+            self._binsize   = parameters['binsize']
+            self._height    = parameters['roi'][3]
+            self._width     = parameters['roi'][2]
+            self._roi       = parameters['roi']
+
+        else:
+            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
 
         return
 
-    def _kill(self):
+    def _release(self):
         """
-        kill the child process
         """
 
-        if self._child == None:
-            logging.debug('no active child process detected')
+        if not self._child.started.value:
+            logging.log(logging.DEBUG, 'no active child process')
             return
 
-        logging.debug('destroying the child process')
+        def f(obj, camera, *args, **kwargs):
+            try:
+                if camera.IsStreaming():
+                    camera.EndAcquisition()
+                camera.DeInit()
+                return True
+            except PySpin.SpinnakerException:
+                return False
 
-        # break out of the main loop in the child process
-        self.started = False
+        # send the function through the queue
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
 
-        # empty out the queues - if the are not empty it can cause the call to the join method to hang
-        if self._iq.qsize() != 0 or self._oq.qsize() != 0:
-            logging.debug('emptying input and output queues')
-            while not self._iq.empty(): item = self._iq.get()
-            while not self._oq.empty(): item = self._oq.get()
+        # retrieve the result of the function call
+        result = self._child.oq.get()
 
-        # join the child process
-        self._child.join(timeout=15)
-        if self._child.is_alive():
-            logging.error('child process is deadlocked')
-            self._child.terminate()
-            self._child.join()
+        # join the child process with the main process
+        self._child.join()
 
-        # delete the reference to the child process
-        self._child = None
-
-        return
-
-    # NOTE : this method is not yet implemented
-    # TODO : implement this method
-
-    def _send(self, item, caller='parent', *items):
-        """
-        put one or more items in the input queue
-
-        keywords
-        --------
-        caller : str
-            identity of the process (i.e., parent or child)
-
-        notes
-        -----
-        The caller kwarg specifies which queue to put the item(s) in.
-        """
-
-        if caller == 'parent':
-            q = self._iq
-        elif caller == 'child':
-            q = self._oq
+        if result:
+            logging.log(logging.INFO, f'camera[{self._device}] released')
         else:
-            raise ValueError('invalid caller-ID')
-
-        q.put(item)
-
-        # option to send follow up data
-        if len(items) != 0:
-            q.put(items)
+            logging.log(logging.ERROR, f'failed to release camera[{self._device}]')
 
         return
 
-    # retreive the result of a call from the output queue
+    # framerate
     @property
-    def _result(self):
+    def framerate(self):
 
-        # try:
-        #     result = self._oq.get(block=True, timeout=5)
+        if self.locked:
+            return self._framerate
 
-        # except mp.TimeoutError:
-        #     raise SubprocessError('failed to retreive result from output queue')
+        def f(obj, camera, *args, **kwargs):
+            try:
+                value = camera.AcquisitionFrameRate.GetValue()
+                return True, value
+            except PySpin.SpinnakerException:
+                return False, None
 
-        # except queue.Empty:
-        #     raise SubprocessError('failed to retreive result from output queue')
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result, value = int(np.around(self._child.oq.get()))
 
-        result = self._oq.get()
+        #
+        if not result:
+            logging.log(logging.ERROR, f'framerate query failed')
+        else:
+            return value
+        if value != self._framerate:
+            logging.log(logging.ERROR, f'actual camera framerate of {value} fps does not equal the target framerate of {self._framerate} fps')
 
-        return result
+    @framerate.setter
+    def framerate(self, value):
 
-    # started flag
+        if self.locked:
+            raise AcquisitionPropertyError(f'acquisition lock is engaged')
+
+        def f(obj, camera, *args, **kwargs):
+            value = kwargs['value']
+            if not camera.AcquisitionFrameRateEnable.GetValue():
+                camera.AcquisitionFrameRateEnable.SetValue(True)
+            min = camera.AcquisitionFrameRate.GetMin()
+            max = camera.AcquisitionFrameRate.GetMax()
+            if not min <= value <= max:
+                return False
+            else:
+                try:
+                    camera.AcquisitionFrameRate.SetValue(value)
+                    if int(np.around(camera.AcquisitionFrameRate.GetValue())) != value:
+                        return False
+                    else:
+                        return True
+                except PySpin.SpinnakerException:
+                    return False
+
+        #
+        kwargs = {'value' : value}
+        item   = (dill.dumps(f), [], kwargs)
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+
+        if not result:
+            logging.log(logging.ERROR, f'failed to set camera[{self._device}] framerate to {value}')
+        else:
+            self._framerate = value
+
+        return
+
+    # exposure
     @property
-    def started(self): return True if self._started.value == 1 else False
+    def exposure(self):
 
-    @started.setter
-    def started(self, value):
-        self._started.value = 1 if value == True else False
+        if self.locked:
+            return self._exposure
 
-    # acquiring flag
+        def f(obj, camera, *args, **kwargs):
+            try:
+                value = camera.ExposureTime.GetValue()
+                return True, value
+            except PySpin.SpinnakerException:
+                return False, None
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result, value = int(np.around(self._child.oq.get()))
+
+        #
+        if not result:
+            logging.log(logging.ERROR, f'failed to get exposure value from camera[{self._device}]')
+        else:
+            return value
+
+    @exposure.setter
+    def exposure(self, value):
+
+        if self.locked:
+            raise AcquisitionPropertyError(f'acquisition lock is engaged')
+
+        def f(obj, camera, *args, **kwargs):
+            value = kwargs['value']
+            try:
+                min = camera.ExposureTime.GetMin()
+                max = camera.ExposureTime.GetMax()
+                if not min <= value <= max:
+                    return False
+                else:
+                    camera.ExposureTime.SetValue(value)
+                    return True
+
+            except PySpin.SpinnakerException:
+                return False
+
+        item = (dill.dumps(f), [], {'value' : value})
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'failed to set exposure to {value} us for camera[{self._device}]')
+        else:
+            self._exposure = value
+
+        return
+
+    # binsize
     @property
-    def acquiring(self): return True if self._acquiring.value == 1 else False
+    def binsize(self):
 
-    @acquiring.setter
-    def acquiring(self, value):
-        self._acquiring.value = 1 if value == True else False
+        if self.locked:
+            return self._binsize
+
+        def f(obj, camera, *args, **kwargs):
+            x = camera.BinningHorizontal.GetValue()
+            y = camera.BinningVertical.GetValue()
+            return (x, y)
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        value = self._child.oq.get()
+
+        #
+        if value != self._binsize:
+            logging.log(logging.ERROR, f'actual camera binsize of {value} pixels does not equal the target binsize of {self._binsize} pixels')
+            return
+
+        return value
+
+    @binsize.setter
+    def binsize(self, value):
+
+        # check the value of the target binsize
+
+        # it can be a single integer
+        if type(value) == int:
+            if value not in [1, 2, 4]:
+                raise AcquisitionPropertyError('binsize must be 1, 2, or 4 pixels')
+            value = (value, value)
+
+        # it can be a list or tuple of two integers
+        elif (type(value) == list or type(value) == tuple) and len(value) == 2:
+            for item in value:
+                if item not in [1, 2, 4]:
+                    raise AcquisitionPropertyError('binsize must be 1, 2, or 4 pixels')
+
+        # it can't be anything else
+        else:
+            raise AcquisitionPropertyError(f'{value} is not a valid value for the binsize property')
+
+        def f(obj, camera, *args, **kwargs):
+            xbin, ybin = kwargs['value']
+            try:
+                xmin = camera.BinningHorizontal.GetMin()
+                xmax = camera.BinningHorizontal.GetMax()
+                ymin = camera.BinningVertical.GetMin()
+                ymax = camera.BinningVertical.GetMax()
+                if not (xmin <= xbin <= xmax) or (not ymin <= ybin <= ymax):
+                    return False
+                else:
+                    camera.BinningHorizontal.SetValue(xbin)
+                    camera.BinningVertical.SetValue(ybin)
+                    camera.OffsetX.SetValue(0)
+                    camera.OffsetY.SetValue(0)
+                    camera.Height.SetValue(camera.Height.GetMax())
+                    camera.Width.SetValue(camera.Width.GetMax())
+                    return True
+
+            except PySpin.SpinnakerException:
+                return False
+
+        item = (dill.dumps(f), [], {'value' : value})
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'failed to set binsize to {value} pixels for camera[{self._device}]')
+        else:
+            self._binsize = value
+
+        return
+
+    # roi
+    @property
+    def roi(self):
+
+        if self.locked:
+            return self._roi
+
+        def f(obj, camera, *args, **kwargs):
+            x = camera.OffsetX.GetValue()
+            y = camera.OffsetY.GetValue()
+            w = camera.Width.GetValue()
+            h = camera.Height.GetValue()
+            return (x, y, w, h)
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        value = self._child.oq.get()
+
+        #
+        if value != self._roi:
+            logging.log(logging.ERROR, f'actual camera roi parameters ({value}) do not equal the target parameters of {self._roi}')
+            return
+
+        return value
+
+    @roi.setter
+    def roi(self, value):
+
+        if self.locked:
+            raise AcquisitionPropertyError('acquisition lock is engaged')
+
+        if (type(roi) != list and type(roi) != tuple) or len(roi) != 4:
+            raise AcquisitionPropertyError(f'{value} is not a valid value for the roi property')
+
+        def f(obj, camera, *args, **kwargs):
+            x, y, w, h = kwargs['value']
+            try:
+                if (camera.Width.GetMax() - (x + w) <= 0) or (camera.Height.GetMax() - (y + h) <= 0):
+                    return False
+                else:
+                    camera.OffsetX.SetValue(x)
+                    camera.OffsetY.SetValue(y)
+                    camera.Height.SetValue(h)
+                    camera.Width.SetValue(w)
+                    return True
+
+            except PySpin.SpinnakerException:
+                return False
+
+    kwargs = {'value' : value}
+    item = (dill.dumps(f), [], kwargs)
+    self._child.iq.put(item)
+    result = self._child.oq.get()
+    if not result:
+        logging.log(logging.ERROR, f'failed to set the roi parameters to {value} for camera[{self._device}]')
+
+    return
+
+    # width
+    @property
+    def width(self):
+
+        if self.locked:
+            return self._width
+
+        def f(obj, camera, *args, **kwargs):
+            try:
+                value = camera.Width.GetValue()
+                return True, value
+            except PySpin.SpinnakerException:
+                return None, False
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result, value = self._child.iq.get()
+        if not result:
+            logging.log(logging.ERROR, f'failed to query frame width for camera [{self._device}]')
+        else:
+            return value
+
+    # height
+    @property
+    def height(self):
+
+        if self.locked:
+            return self._height
+
+        def f(obj, camera, *args, **kwargs):
+            try:
+                value = camera.Height.GetValue()
+                return True, value
+            except PySpin.SpinnakerException:
+                return None, False
+
+        item = (dill.dumps(f), [], {})
+        self._child.iq.put(item)
+        result, value = self._child.iq.get()
+        if not result:
+            logging.log(logging.ERROR, f'failed to query frame height for camera [{self._device}]')
+        else:
+            return value
 
     # acquisition lock state
     @property
     def locked(self):
         return self._locked
 
-    @locked.setter
-    def locked(self, value):
+    # camera nickname
+    @property
+    def nickname(self):
+        return self._nickname
 
-        # engage the lock
-        if value == True:
-            if self._locked:
-                logging.debug('acquisition lock is already engaged')
-                return
-            result = self._lock.acquire(block=False)
-            if result:
-                logging.debug('acquisition lock engaged')
-                self._locked = True
-            else:
-                logging.debug('failed to engage acquisition lock')
-
-        # disengage the lock
-        elif value == False:
-            if not self._locked:
-                logging.debug('acquisition lock is not engaged')
-                return
-            try:
-                self._lock.release()
-                logging.debug('acquisition lock disengaged')
-                self._locked = False
-            except ValueError:
-                logging.debug('failed to disengage acquisition lock')
-
-        else:
-            raise ValueError('invalid acquisition lock state')
+    @nickname.setter
+    def nickname(self, value):
+        self._nickname = str(value)

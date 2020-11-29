@@ -97,14 +97,13 @@ class SecondaryCamera(MainProcess):
                     # aborted before the primary camera is triggered (see below).
 
                     try:
-                        result = camera.GetNextImage(1) # timeout
+                        pointer = camera.GetNextImage(1) # timeout
                     except PySpin.SpinnakerException:
                         continue
 
                     #
                     if not result.IsIncomplete():
-                        image = result.GetNDArray()
-                        writer.write(image)
+                        writer.write(pointer)
 
                 #
                 writer.close()

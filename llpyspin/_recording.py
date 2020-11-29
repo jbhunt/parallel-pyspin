@@ -41,14 +41,16 @@ class VideoWriterSpinnaker(object):
 
         return
 
-    def write(self, result):
+    def write(self, pointer):
         """
         """
 
         if not self.opened:
             return
 
-        self._writer.Append(result)
+        pointer = pointer.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
+
+        self._writer.Append(pointer)
 
         return
 
@@ -108,21 +110,21 @@ class VideoWriterFFmpeg(object):
 
         return self
 
-    def write(self, result):
+    def write(self, pointer):
         """
         """
 
         if not self.running:
             raise sp.SubprocessError('no open process')
 
-        if type(result) == np.ndarray:
-            gray = result
+        if type(pointer) == np.ndarray:
+            image = pointer
         else:
-            gray = result.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
+            image = pointer.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
 
-        rgb = np.stack((gray,) * 3, axis=-1)
+        stacked = np.stack((image,) * 3, axis=-1)
 
-        self.p.stdin.write(rgb.tostring())
+        self.p.stdin.write(stacked.tostring())
 
         return
 

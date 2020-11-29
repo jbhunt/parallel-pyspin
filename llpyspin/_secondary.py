@@ -74,7 +74,7 @@ class SecondaryCamera(MainProcess):
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
                     writer = VideoWriterFFmpeg()
-                elif kwargs['backend'] == 'PySpin':
+                elif kwargs['backend'] == 'spinnaker':
                     writer = VideoWriterSpinnaker()
                 else:
                     return False

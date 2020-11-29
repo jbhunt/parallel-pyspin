@@ -510,14 +510,14 @@ class MainProcess(object):
             except PySpin.SpinnakerException:
                 return False
 
-    kwargs = {'value' : value}
-    item = (dill.dumps(f), [], kwargs)
-    self._child.iq.put(item)
-    result = self._child.oq.get()
-    if not result:
-        logging.log(logging.ERROR, f'failed to set the roi parameters to {value} for camera[{self._device}]')
+        kwargs = {'value' : value}
+        item = (dill.dumps(f), [], kwargs)
+        self._child.iq.put(item)
+        result = self._child.oq.get()
+        if not result:
+            logging.log(logging.ERROR, f'failed to set the roi parameters to {value} for camera[{self._device}]')
 
-    return
+        return
 
     # width
     @property

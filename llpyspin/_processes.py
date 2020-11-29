@@ -159,6 +159,7 @@ class MainProcess(object):
         self._locked = False
 
         # default class for the child process
+        self._child = None
         self._childClass = ChildProcess
 
         return
@@ -261,6 +262,7 @@ class MainProcess(object):
 
         # join the child process with the main process
         self._child.join()
+        self._child = None
 
         if result:
             logging.log(logging.INFO, f'camera[{self._device}] released')

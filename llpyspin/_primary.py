@@ -46,7 +46,7 @@ class PrimaryCamera(MainProcess):
         """
         """
 
-        if self._child.started.value:
+        if self._child != None and self._child.started.value:
             logging.log(logging.INFO, f'camera[{self._device}] is already open')
             return
 

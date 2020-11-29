@@ -537,7 +537,7 @@ class MainProcess(object):
 
         item = (dill.dumps(f), [], {})
         self._child.iq.put(item)
-        result, value = self._child.iq.get()
+        result, value = self._child.oq.get()
         if not result:
             logging.log(logging.ERROR, f'failed to query frame width for camera [{self._device}]')
         else:
@@ -559,7 +559,7 @@ class MainProcess(object):
 
         item = (dill.dumps(f), [], {})
         self._child.iq.put(item)
-        result, value = self._child.iq.get()
+        result, value = self._child.oq.get()
         if not result:
             logging.log(logging.ERROR, f'failed to query frame height for camera [{self._device}]')
         else:

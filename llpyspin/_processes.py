@@ -100,7 +100,7 @@ class ChildProcess(mp.Process):
             del system
 
             # reset the started flag
-            self.started = False
+            self.started.value = 0
 
             return
 
@@ -200,8 +200,8 @@ class MainProcess(object):
 
                 #
                 roi = (x, y, w, h)
-                framerate = int(np.around(camera.AcquisitionFrameRate.GetValue()))
-                exposure  = int(np.around(camera.ExposureTime.GetValue()))
+                framerate = int(np.ceil(camera.AcquisitionFrameRate.GetValue()))
+                exposure  = int(np.ceil(camera.ExposureTime.GetValue()))
                 binsize   = (camera.BinningHorizontal.GetValue(), camera.BinningVertical.GetValue())
 
                 #
@@ -214,7 +214,7 @@ class MainProcess(object):
 
                 return True, parameters
 
-            except PySpin.SpinnakerException:
+            except:
                 return False, None
 
         item = (dill.dumps(f), [], {})

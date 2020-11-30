@@ -183,7 +183,7 @@ class MainProcess(object):
         self._child = self._childClass(self._device)
         self._child.start()
         result = self._child.oq.get()
-        if not result
+        if not result:
             logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
             return
 

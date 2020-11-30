@@ -4,7 +4,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import MainProcess, ChildProcess
+from ._processes  import MainProcess, ChildProcess, ChildProcessError
 from ._recording  import VideoWriterFFmpeg, VideoWriterSpinnaker
 
 # logging setup
@@ -30,16 +30,13 @@ class SecondaryCamera(MainProcess):
         """
         """
 
-        if self._child != None and self._child.started.value:
-            logging.log(logging.INFO, f'camera[{self._device}] is already open')
-            return
-
-        # start the child process
-        self._initialize()
-
-        # check if the child process spawn was successful
+        # spawn a child process as needed
         if self._child == None:
-            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
+            self._initialize()
+
+        # return if an active child process is detected
+        if self._child.started.value:
+            logging.log(logging.INFO, f'camera[{self._device}] is already open')
             return
 
         # unset these property values (they are determined by the primary camera)
@@ -66,10 +63,13 @@ class SecondaryCamera(MainProcess):
         """
         """
 
+        if self._child == None:
+            raise ChildProcessError('no active child process')
+
         if self.primed:
             logging.log(logging.WARNING, f'camera[{self._device}] is already primed')
 
-        if backend not in ['ffmpeg', 'PySpin']:
+        if backend not in ['ffmpeg', 'spinnaker']:
             raise ValueError(f'{backend} is not a valid backend for writing video')
 
         def f(obj, camera, *args, **kwargs):
@@ -137,6 +137,9 @@ class SecondaryCamera(MainProcess):
         """
         """
 
+        if self._child == None:
+            raise ChildProcessError('no active child process')
+
         if not self._primed:
             logging.log(logging.INFO, f'camera[{self._device}] is not primed')
             return
@@ -171,6 +174,9 @@ class SecondaryCamera(MainProcess):
     def close(self):
         """
         """
+
+        if self._child == None:
+            raise ChildProcessError('no active child process')
 
         self._release()
 

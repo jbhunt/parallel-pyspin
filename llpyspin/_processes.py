@@ -24,6 +24,18 @@ class AcquisitionPropertyError(Exception):
 
         return
 
+class ChildProcessError(Exception):
+    """
+    """
+
+    def __init__(self, message):
+        """
+        """
+
+        super().__init__(message)
+
+        return
+
 class ChildProcess(mp.Process):
     """
     """
@@ -186,7 +198,7 @@ class MainProcess(object):
         if not result:
             self._child.join()
             self._child = None
-            return
+            raise ChildProcessError('failed to initialize child process')
 
         def f(obj, camera, *args, **kwargs):
             try:

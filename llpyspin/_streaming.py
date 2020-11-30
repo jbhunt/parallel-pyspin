@@ -6,7 +6,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import MainProcess, ChildProcess
+from ._processes  import MainProcess, ChildProcess, ChildProcessError
 
 # logging setup
 logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
@@ -81,18 +81,12 @@ class VideoStream(MainProcess):
         """
         """
 
-        # spawn a child process if needed
-        if self._child == None or not self._child.started.value:
+        # spawn a child process as needed
+        if self._child == None:
             self._initialize()
 
-        # check if the child process spawn was successful
-        if self._child == None:
-            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
-            return
-
-        #
+        # return if the stream is already open
         if self._child.acquiring.value:
-            logging.log(logging.INFO, 'stream is already open')
             return
 
         # set the acquisition flag
@@ -145,8 +139,8 @@ class VideoStream(MainProcess):
         """
         """
 
-        if not self._child.acquiring.value:
-            logging.log(logging.INFO, 'stream is not open')
+        # return if there is no active child or the stream is already closed
+        if self._child == None or self._child.acquiring.value == 0:
             return
 
         self._child.acquiring.value = False
@@ -179,9 +173,9 @@ class VideoStream(MainProcess):
         """
         """
 
-        if not self._child.acquiring.value:
-            logging.log(logging.INFO, 'stream is closed')
-            return (False, None)
+        # return if there is no active child or the stream is closed
+        if self._child == None or self._child.acquiring.value == 0:
+            return
 
         # the lock blocks if a new image is being written to the image attribute
         with self._child.buffer.get_lock():

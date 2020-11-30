@@ -77,9 +77,6 @@ class ChildProcess(mp.Process):
             system  = PySpin.System.GetInstance()
             cameras = system.GetCameras()
 
-            #
-            assert len(cameras) != 0
-
             # instantiate the camera
             if type(self._device) == str:
                 camera = cameras.GetBySerial(self._device)
@@ -87,7 +84,7 @@ class ChildProcess(mp.Process):
             if type(self._device) == int:
                 camera = cameras.GetByIndex(self._device)
 
-        except:
+        except PySpin.SpinnakerException:
 
             # clean-up
             try:
@@ -96,7 +93,10 @@ class ChildProcess(mp.Process):
                 pass
             cameras.Clear()
             del cameras
-            system.ReleaseInstance()
+            try:
+                system.ReleaseInstance()
+            except PySpin.SpinnakerException:
+                pass
             del system
 
             # reset the started flag
@@ -123,14 +123,17 @@ class ChildProcess(mp.Process):
             except queue.Empty:
                 continue
 
-        # clean up
+        # clean-up
         try:
             del camera
         except NameError:
             pass
         cameras.Clear()
         del cameras
-        system.ReleaseInstance()
+        try:
+            system.ReleaseInstance()
+        except PySpin.SpinnakerException:
+            pass
         del system
 
         return
@@ -214,7 +217,7 @@ class MainProcess(object):
 
                 return True, parameters
 
-            except:
+            except PySpin.SpinnakerException:
                 return False, None
 
         item = (dill.dumps(f), [], {})

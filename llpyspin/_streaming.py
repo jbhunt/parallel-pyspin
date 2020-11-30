@@ -73,7 +73,6 @@ class VideoStream(MainProcess):
         self._childClass = ChildProcessStreaming
 
         # initialize the camera and open the stream
-        self._initialize()
         self.open()
 
         return
@@ -82,14 +81,19 @@ class VideoStream(MainProcess):
         """
         """
 
+        # spawn a child process if needed
+        if self._child == None or not self._child.started.value:
+            self._initialize()
+
+        # check if the child process spawn was successful
+        if self._child == None:
+            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
+            return
+
         #
         if self._child.acquiring.value:
             logging.log(logging.INFO, 'stream is already open')
             return
-
-        # spawn a child process if needed
-        if not self._child.started.value:
-            self._initialize()
 
         # set the acquisition flag
         self._child.acquiring.value = 1

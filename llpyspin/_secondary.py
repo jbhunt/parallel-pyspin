@@ -37,6 +37,11 @@ class SecondaryCamera(MainProcess):
         # start the child process
         self._initialize()
 
+        # check if the child process spawn was successful
+        if self._child == None:
+            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
+            return
+
         # unset these property values (they are determined by the primary camera)
         self._framerate = None
         self._exposure  = None

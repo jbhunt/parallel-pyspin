@@ -184,7 +184,8 @@ class MainProcess(object):
         self._child.start()
         result = self._child.oq.get()
         if not result:
-            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
+            self._child.join()
+            self._child = None
             return
 
         def f(obj, camera, *args, **kwargs):
@@ -238,16 +239,12 @@ class MainProcess(object):
 
         # set all property values
         if result:
-            logging.log(logging.INFO, f'camera[{self._device}] initialized')
             self._framerate = parameters['framerate']
             self._exposure  = parameters['exposure']
             self._binsize   = parameters['binsize']
             self._height    = parameters['roi'][3]
             self._width     = parameters['roi'][2]
             self._roi       = parameters['roi']
-
-        else:
-            logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
 
         return
 
@@ -284,7 +281,6 @@ class MainProcess(object):
         else:
             logging.log(logging.ERROR, f'failed to release camera[{self._device}]')
 
-        return
 
     # framerate
     @property

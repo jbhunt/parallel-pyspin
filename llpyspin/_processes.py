@@ -175,9 +175,10 @@ class MainProcess(object):
         self._child = self._childClass(self._device)
         self._child.start()
 
-        #
-        if not self._child.started.value:
+        # check to see if the child process is running
+        if self._child.started.value != 1:
             logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
+            return
 
         def f(obj, camera, *args, **kwargs):
             try:

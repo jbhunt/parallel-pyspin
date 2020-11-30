@@ -84,6 +84,10 @@ class ChildProcess(mp.Process):
             if type(self._device) == int:
                 camera = cameras.GetByIndex(self._device)
 
+            #
+            result = True
+            self.oq.put(result)
+
         except PySpin.SpinnakerException:
 
             # clean-up
@@ -101,6 +105,10 @@ class ChildProcess(mp.Process):
 
             # reset the started flag
             self.started.value = 0
+
+            #
+            result = False
+            self.oq.put(result)
 
             return
 
@@ -174,9 +182,8 @@ class MainProcess(object):
         # create and start the child process
         self._child = self._childClass(self._device)
         self._child.start()
-
-        # check to see if the child process is running
-        if self._child.started.value != 1:
+        result = self._child.oq.get()
+        if not result
             logging.log(logging.ERROR, f'failed to initialize camera[{self._device}]')
             return
 

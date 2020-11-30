@@ -1,5 +1,4 @@
 import dill
-import time
 import PySpin
 import logging
 import numpy as np

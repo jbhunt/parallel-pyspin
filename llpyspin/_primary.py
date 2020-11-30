@@ -94,7 +94,7 @@ class PrimaryCamera(MainProcess):
                 camera.CounterTriggerSource.SetValue(PySpin.CounterTriggerSource_ExposureStart)
                 camera.CounterTriggerActivation.SetValue(PySpin.CounterTriggerActivation_RisingEdge)
 
-                # create a digital signal whose PWD is determined by the counter
+                # create a digital signal whose PWD is determinscikit-videoed by the counter
                 camera.LineSelector.SetValue(PySpin.LineSelector_Line2)
                 camera.V3_3Enable.SetValue(True)
                 camera.LineSelector.SetValue(PySpin.LineSelector_Line1)

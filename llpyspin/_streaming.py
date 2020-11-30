@@ -21,7 +21,8 @@ class ChildProcessStreaming(ChildProcess):
         """
 
         # create a shared memory array for storing a single image
-        self.buffer = self._createBuffer(device)
+        # self.buffer = self._createBuffer(device)
+        self.buffer = mp.Array('i', 10 * 1000000)
 
         #
         super().__init__(device)
@@ -37,7 +38,10 @@ class ChildProcessStreaming(ChildProcess):
         try:
             system  = PySpin.System.GetInstance()
             cameras = system.GetCameras()
-            camera  = cameras.GetByIndex(device)
+            if type(device) == str:
+                camera = cameras.GetBySerial(device)
+            else:
+                camera = cameras.GetByIndex(device)
             camera.Init()
             w = camera.Width.GetMax()
             h = camera.Height.GetMax()
@@ -123,7 +127,7 @@ class VideoStream(MainProcess):
 
                 return True
 
-            except:
+            except PySpin.SpinnakerException:
                return False
 
         # pack the kwargs

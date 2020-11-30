@@ -97,11 +97,13 @@ class VideoWriterFFmpeg(object):
             '-vcodec', 'rawvideo',
             '-s', f'{shape[1]}x{shape[0]}',
             '-r', f'{framerate}',
-            '-pix_fmt', 'yuv420p',
+            '-pix_fmt', 'rgb24',
             '-i', '-',
+            '-preset', 'veryslow',
+            '-pix_fmt', 'yuv420p',
             '-filter:v', 'hue=s=0', # this is important - it converts the video to grayscale
             '-an',
-            '-crf', '18',
+            '-crf', '0',
             '-vcodec', 'libx264',
             filename
         ]
@@ -120,11 +122,13 @@ class VideoWriterFFmpeg(object):
         if type(pointer) == np.ndarray:
             image = pointer
         else:
-            image = pointer.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray()
+            image = pointer.GetNDArray()
 
-        stacked = np.stack((image,) * 3, axis=-1)
+        # duplicate the array along a third axis
+        if len(image.shape) != 3:
+            image = np.stack((image,) * 3, axis=-1)
 
-        self.p.stdin.write(stacked.tostring())
+        self.p.stdin.write(image)
 
         return
 

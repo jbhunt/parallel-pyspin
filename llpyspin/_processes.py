@@ -218,7 +218,11 @@ class MainProcess(object):
 
                 # set the framerate
                 camera.AcquisitionFrameRateEnable.SetValue(True)
-                camera.AcquisitionFrameRate.SetValue(1)
+                camera.AcquisitionFrameRate.SetValue(10)
+
+                # set the binsize
+                camera.BinningHorizontal.SetValue(2)
+                camera.BinningVertical.SetValue(2)
 
                 #
                 x = camera.OffsetX.GetValue()
@@ -257,6 +261,8 @@ class MainProcess(object):
             self._height    = parameters['roi'][3]
             self._width     = parameters['roi'][2]
             self._roi       = parameters['roi']
+        else:
+            print('hello world')
 
         return
 
@@ -285,7 +291,11 @@ class MainProcess(object):
         result = self._child.oq.get()
 
         # join the child process with the main process
-        self._child.join()
+        try:
+            self._child.join(timeout=3)
+        except mp.TimeoutError:
+            self._child.terminate()
+            raise ChildProcessError('child process dead-locked')
         self._child = None
 
         if result:
@@ -422,7 +432,7 @@ class MainProcess(object):
             try:
                 x = camera.BinningHorizontal.GetValue()
                 y = camera.BinningVertical.GetValue()
-                return True (x, y)
+                return True, (x, y)
             except PySpin.SpinnakerException:
                 return False, None
 

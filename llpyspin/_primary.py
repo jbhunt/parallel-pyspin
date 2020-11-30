@@ -53,11 +53,6 @@ class PrimaryCamera(MainProcess):
         if self._child == None:
             self._initialize()
 
-        # return if an active child process is detected
-        if self._child.started.value:
-            logging.log(logging.INFO, f'camera[{self._device}] is already open')
-            return
-
         # set the buffer handling mode to oldest first (instead of newest only)
         def f(obj, camera, *args, **kwargs):
             try:
@@ -125,50 +120,50 @@ class PrimaryCamera(MainProcess):
 
         def f(obj, camera, *args, **kwargs):
 
-            try:
+            # try:
 
-                # begin acquisition
-                camera.BeginAcquisition()
+            # begin acquisition
+            camera.BeginAcquisition()
 
-                # initialize the video writer
-                if kwargs['backend'] == 'ffmpeg':
-                    writer = VideoWriterFFmpeg()
-                elif kwargs['backend'] == 'spinnaker':
-                    writer = VideoWriterSpinnaker()
-                else:
-                    return False
-                writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
-
-                # wait for the trigger event
-                obj.trigger.wait()
-
-                # unset the trigger mode
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-
-                # main acquisition loop
-                while obj.acquiring.value:
-
-                    try:
-                        pointer = camera.GetNextImage(1)
-                    except PySpin.SpinnakerException:
-                        continue
-
-                    if not result.IsIncomplete():
-                        writer.write(pointer)
-
-                    result.Release()
-
-
-                # reset the trigger mode
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
-
-                #
-                writer.close()
-
-                return True
-
-            except PySpin.SpinnakerException:
+            # initialize the video writer
+            if kwargs['backend'] == 'ffmpeg':
+                writer = VideoWriterFFmpeg()
+            elif kwargs['backend'] == 'spinnaker':
+                writer = VideoWriterSpinnaker()
+            else:
                 return False
+            writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
+
+            # wait for the trigger event
+            obj.trigger.wait()
+
+            # unset the trigger mode
+            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+
+            # main acquisition loop
+            while obj.acquiring.value:
+
+                try:
+                    pointer = camera.GetNextImage(1)
+                except PySpin.SpinnakerException:
+                    continue
+
+                if not pointer.IsIncomplete():
+                    writer.write(pointer)
+
+                pointer.Release()
+
+
+            # reset the trigger mode
+            camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+
+            #
+            writer.close()
+
+            return True
+
+            # except PySpin.SpinnakerException:
+            #     return False
 
         kwargs = {
             'filename'  : filename,
@@ -184,6 +179,9 @@ class PrimaryCamera(MainProcess):
         self._primed = True
         self._locked = True
 
+        #
+        self._child.acquiring.value = 1
+
         return
 
     def trigger(self):
@@ -194,7 +192,6 @@ class PrimaryCamera(MainProcess):
             logging.log(logging.INFO, f'camera[{self._device}] is not primed')
             return
 
-        self._child.acquiring.value = 1
         self._child.trigger.set()
 
         return
@@ -214,8 +211,8 @@ class PrimaryCamera(MainProcess):
         self._child.acquiring.value = 0
 
         # release the trigger (in the case of abortion before the trigger is set)
-        if self._child.trigger.is_set():
-            self._child.trigger.clear()
+        if not self._child.trigger.is_set():
+            self._child.trigger.set()
 
         # query the result of video acquisition
         result = self._child.oq.get()

@@ -1,3 +1,5 @@
+import dill
+import time
 import PySpin
 import logging
 import numpy as np
@@ -34,11 +36,6 @@ class SecondaryCamera(MainProcess):
         if self._child == None:
             self._initialize()
 
-        # return if an active child process is detected
-        if self._child.started.value:
-            logging.log(logging.INFO, f'camera[{self._device}] is already open')
-            return
-
         # unset these property values (they are determined by the primary camera)
         self._framerate = None
         self._exposure  = None
@@ -46,7 +43,7 @@ class SecondaryCamera(MainProcess):
         # set the buffer handling mode to oldest first (instead of newest only)
         def f(obj, camera, *args, **kwargs):
             try:
-                camera.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
                 return True
             except PySpin.SpinnakerException:
                 return False
@@ -74,49 +71,51 @@ class SecondaryCamera(MainProcess):
 
         def f(obj, camera, *args, **kwargs):
 
-            try:
+            # try:
 
-                # initialize the video writer
-                if kwargs['backend'] == 'ffmpeg':
-                    writer = VideoWriterFFmpeg()
-                elif kwargs['backend'] == 'spinnaker':
-                    writer = VideoWriterSpinnaker()
-                else:
-                    return False
-                writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
+            # initialize the video writer
+            if kwargs['backend'] == 'ffmpeg':
+                writer = VideoWriterFFmpeg()
+            elif kwargs['backend'] == 'spinnaker':
+                writer = VideoWriterSpinnaker()
+            else:
+                return False
+            writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
-                # configure the hardware trigger
-                camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
-                camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
-                camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+            # configure the hardware trigger
+            camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
+            camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
+            camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
+            camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-                # begin acquisition
-                camera.BeginAcquisition()
+            # begin acquisition
+            camera.BeginAcquisition()
 
-                # main loop
-                while obj.acquiring.value:
+            # main loop
+            while obj.acquiring.value:
 
-                    # There's a 1 ms timeout for the call to GetNextImage to prevent
-                    # the secondary camera from blocking when video acquisition is
-                    # aborted before the primary camera is triggered (see below).
+                # There's a 100 ms timeout for the call to GetNextImage to prevent
+                # the secondary camera from blocking when video acquisition is
+                # aborted before the primary camera is triggered (see below).
 
-                    try:
-                        pointer = camera.GetNextImage(1) # timeout
-                    except PySpin.SpinnakerException:
-                        continue
-
-                    #
-                    if not result.IsIncomplete():
-                        writer.write(pointer)
+                try:
+                    pointer = camera.GetNextImage(100) # timeout
+                except PySpin.SpinnakerException:
+                    continue
 
                 #
-                writer.close()
+                if not pointer.IsIncomplete():
+                    writer.write(pointer)
 
-                return True
+                pointer.Release()
 
-            except PySpin.SpinnakerException:
-                return False
+            #
+            writer.close()
+
+            return True
+
+            # except PySpin.SpinnakerException:
+            #     return False
 
         kwargs = {
             'filename'  : filename,

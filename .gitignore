@@ -1,0 +1,4 @@
+build
+dist
+parallel_pyspin.egg-info
+*.pyc

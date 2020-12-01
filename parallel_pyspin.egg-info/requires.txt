@@ -1,3 +1,0 @@
-scikit-video
-pyyaml
-numpy

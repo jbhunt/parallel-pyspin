@@ -8,10 +8,10 @@ with open(requirements,'r') as stream:
 
 setuptools.setup(
     name="parallel-pyspin",
-    version="0.2.dev4",
+    version="1.0.0",
     author="Joshua Hunt",
     author_email="hunt.brian.joshua@gmail.com",
-    description="parallel and synchronous video acqusition with FLIR USB3 cameras",
+    description="Parallel and synchronous video acqusition with FLIR USB3 cameras",
     url="https://github.com/jbhunt/parallel-pyspin",
     packages=setuptools.find_packages(),
     classifiers=[
@@ -22,5 +22,4 @@ setuptools.setup(
     python_requires='>=3.6',
     install_requires=dependencies,
     include_package_date=True,
-    package_data={"":["*.yaml"]}
 )

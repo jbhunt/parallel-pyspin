@@ -4,8 +4,8 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from .processes  import MainProcess, ChildProcess, CameraError, queued
-from .recording  import VideoWriterFFmpeg, VideoWriterSpinnaker
+from .processes import MainProcess, ChildProcess, CameraError, queued
+from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker
 
 class SecondaryCamera(MainProcess):
     """
@@ -16,39 +16,36 @@ class SecondaryCamera(MainProcess):
         """
 
         super().__init__(device)
+        self._spawn_child_process(ChildProcess)
+        self._primed = False
 
         return
 
-    def prime(self, filename, timestamp=True, bitrate=1000000, backend='ffmpeg'):
+    def prime(self,
+        filename,
+        primary_camera_framerate,
+        timestamp=True,
+        bitrate=1000000,
+        backend='ffmpeg',
+        timeout=1
+        ):
         """
         """
 
-        # spawn a new child process if necessary
+        if self.primed:
+            raise CameraError('Camera is already primed')
+
         if self._child is None:
             self._spawn_child_process(ChildProcess)
 
-        # set the buffer handling mode to oldest first (instead of newest only)
-        @queued
-        def f(obj, camera, **kwargs):
+        # check if the secondary camera's framerate is < the primary camera's framerate
+        if self.framerate < primary_camera_framerate:
+            self.framerate = 'max'
+        if self.framerate < primary_camera_framerate:
+            raise CameraError("Secondary camera's framerate < primary camera's framerate")
+
+        def f(child, camera, **kwargs):
             try:
-                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
-                return True, None
-            except PySpin.SpinnakerException:
-                return False, None
-
-        # call the function
-        result, output = f(self, 'Failed to set buffer handling mode')
-
-        # begin acquisition
-        # NOTE - This is a special case in which the queued decorator won't
-        #        work because trying to retrieve the result from the child's
-        #        output queue will cause the main process to hang.
-        def f(obj, camera, **kwargs):
-
-            try:
-
-                # begin acquisition
-                camera.BeginAcquisition()
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
@@ -59,90 +56,83 @@ class SecondaryCamera(MainProcess):
                     return False, None
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
-                # create the timestamps file
-                if kwargs['timestamp']:
-                    # TODO - implement a timestamping procedure
-                    pass
+                # set the streaming mode to oldest first
+                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+
+                # Set the acquisition framerate to the maximum value
+                # The secondary camera's framerate must be >= to the primary camera's framerate
+                # TODO - figure out a smart way to check if ths condition (above) is satisfied
+                fps = camera.AcquisitionFrameRate.GetMax()
+                camera.AcquisitionFrameRate.SetValue(fps)
 
                 # configure the hardware trigger for a secondary camera
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
                 camera.TriggerSource.SetValue(PySpin.TriggerSource_Line3)
                 camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_ReadOut)
-                camera.TriggerActivation.SetValue(PySpin.TriggerActivation_AnyEdge)
+                camera.TriggerActivation.SetValue(PySpin.TriggerActivation_RisingEdge)
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+
+                #
+                timestamps = list()
 
                 # begin acquisition
                 camera.BeginAcquisition()
 
-                return True, None
+                # main loop
+                while child.acquiring.value:
+
+                    # There's a 1 ms timeout for the call to GetNextImage to prevent
+                    # the secondary camera from blocking when video acquisition is
+                    # aborted before the primary camera is triggered (see below).
+
+                    try:
+                        pointer = camera.GetNextImage(kwargs['timeout'])
+                        if pointer.IsIncomplete():
+                            continue
+                        else:
+                            if len(timestamps) == 0:
+                                t0 = pointer.GetTimeStamp()
+                                timestamps.append(0)
+                            else:
+                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                timestamps.append(tn)
+                            writer.write(pointer)
+
+                        pointer.Release()
+
+                    except PySpin.SpinnakerException:
+                        continue
+
+                camera.EndAcquisition()
+
+                # reset the trigger mode
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+
+                #
+                writer.close()
+
+                return True, timestamps
 
             except PySpin.SpinnakerException:
                 return False, None
 
-        # kwargs for configuring up the video writing
+        # NOTE - The acquisition flag needs to be set here before placing the
+        #        acquisition function in the child's input queue
+        self._child.acquiring.value = 1
+
+        #
         kwargs = {
             'filename'  : filename,
             'timestamp' : timestamp,
             'shape'     : (self.height, self.width),
-            'framerate' : self.framerate,
+            'framerate' : primary_camera_framerate,
             'bitrate'   : bitrate,
             'backend'   : backend,
+            'timeout'   : timeout
         }
-
-        # place the function in the input queue
         item = (dill.dumps(f), kwargs)
         self._child.iq.put(item)
-
-        #
         self._primed = True
-        self._locked = True
-
-        return
-
-    def start(self, timeout=1):
-        """
-        """
-
-        if not self.primed:
-            raise CameraError('Camera is not primed')
-
-        def f(child, camera, **kwargs)
-
-            # main loop
-            while obj.acquiring.value:
-
-                # There's a 1 ms timeout for the call to GetNextImage to prevent
-                # the secondary camera from blocking when video acquisition is
-                # aborted before the primary camera is triggered (see below).
-
-                try:
-                    pointer = camera.GetNextImage(kwargs['timeout']) # timeout
-                except PySpin.SpinnakerException:
-                    continue
-
-                #
-                if not pointer.IsIncomplete():
-                    writer.write(pointer)
-
-                pointer.Release()
-
-            # reset the trigger mode
-            camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-
-            #
-            writer.close()
-
-            return True, None
-
-        except PySpin.SpinnakerException:
-            return False, None
-
-        # NOTE - The acquisition flag needs to be set before placing the
-        #        acquisition function in the child's input queue
-        self.acquiring.value = 1
-
-        # place the acquisition function in the child's input queue
-        item = (dill.dumps(f), {'timeout': timeout})
-        self._child.iq.put(item)
 
         return
 
@@ -150,19 +140,20 @@ class SecondaryCamera(MainProcess):
         """
         """
 
-        if self._child.acquiring.value != 1:
+        if not self.primed:
             raise CameraError('Camera is not acquiring')
 
         # stop acquisition
         self._child.acquiring.value = 0
 
         # query the result of video acquisition
-        result, output = self._child.oq.get()
+        result, timestamps = self._child.oq.get()
 
         @queued
         def f(obj, camera, **kwargs):
             try:
-                camera.EndAcquisition()
+                if camera.IsStreaming():
+                    camera.EndAcquisition()
                 camera.DeInit()
                 return True, None
             except:
@@ -175,7 +166,10 @@ class SecondaryCamera(MainProcess):
         self._primed = False
         self._locked = False
 
-        return
+        # respawn child process
+        self._spawn_child_process(ChildProcess)
+
+        return timestamps
 
     @property
     def primed(self):

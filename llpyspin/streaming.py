@@ -6,13 +6,10 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
-from ._processes  import MainProcess, ChildProcess, ChildProcessError
-
-# logging setup
-logging.basicConfig(format='%(levelname)s : %(message)s',level=logging.INFO)
+from .processes  import MainProcess, ChildProcess, CameraError, queued
 
 #
-class ChildProcessStreaming(ChildProcess):
+class StreamingChildProcess(ChildProcess):
     """
     """
 
@@ -21,7 +18,7 @@ class ChildProcessStreaming(ChildProcess):
         """
 
         # create a shared memory array for storing a single image
-        # self.buffer = self._createBuffer(device)
+        # self.buffer = self._initialize_image_buffer(device)
         self.buffer = mp.Array('i', 10 * 1000000)
 
         #
@@ -29,7 +26,7 @@ class ChildProcessStreaming(ChildProcess):
 
         return
 
-    def _createBuffer(self, device):
+    def _initialize_image_buffer(self, device):
         """
         this method determines the size of the image buffer on instantiation
         """
@@ -72,11 +69,7 @@ class VideoStream(MainProcess):
         """
 
         super().__init__(device)
-
-        # override the child process class specification
-        self._childClass = ChildProcessStreaming
-
-        # initialize the camera and open the stream
+        self._spawn_child_process()
         self.open()
 
         return
@@ -86,32 +79,30 @@ class VideoStream(MainProcess):
         """
 
         # spawn a child process as needed
-        if self._child == None:
-            self._initialize()
-
-        # return if the stream is already open
-        if self._child.acquiring.value:
-            return
+        if self._child is None:
+            self._spawn_child_process()
+        else:
+            raise CameraError('Video stream is already open')
 
         # set the acquisition flag
         self._child.acquiring.value = 1
 
-        def f(obj, camera, *args, **kwargs):
+        def f(child, camera, **kwargs):
 
-            # unpack the kwargs
-            shape = kwargs['shape']
+            # unpack the shape of the image
+            width, height = kwargs['shape']
 
             # size of the image (i.e., total number of pixels)
-            size = shape[0] * shape[1]
+            size = width * height
 
             try:
                 camera.BeginAcquisition()
 
                 # main acquisition loop
-                while obj.acquiring.value:
+                while child.acquiring.value:
 
                     try:
-                        image = camera.GetNextImage(1)
+                        image = camera.GetNextImage(kwargs['timeout'])
                     except PySpin.SpinnakerException:
                         continue
 
@@ -125,16 +116,17 @@ class VideoStream(MainProcess):
                         with obj.buffer.get_lock():
                             obj.buffer[:size] = data
 
-                return True
+                return True, None
 
             except PySpin.SpinnakerException:
-               return False
+               return False, None
 
         # pack the kwargs
-        kwargs = {'shape' : (self.height, self.width)}
-        item = (dill.dumps(f), [], kwargs)
-        self._child.iq.put(item)
-
+        kwargs = {
+            'shape'   : (self.width, self.height),
+            'timeout' : 1
+        }
+        self._child.iq.put(dill.dumps(f), kwargs)
         self._locked = True
 
         return
@@ -144,32 +136,33 @@ class VideoStream(MainProcess):
         """
 
         # return if there is no active child or the stream is already closed
-        if self._child == None or self._child.acquiring.value == 0:
-            return
+        if self._child is None:
+            raise CameraError('Video stream is not open')
 
-        self._child.acquiring.value = False
+        # unset the acquisition flag
+        self._child.acquiring.value = 0
 
-        result = self._child.oq.get()
+        # check the result of video acquisition
+        result, output = self._child.oq.get()
         if not result:
-            logging.log(logging.ERROR, f'acquisition for camera[{self._device}] failed')
+            pass
 
+        @queued
         def f(obj, camera, *args, **kwargs):
             try:
                 camera.EndAcquisition()
-                return True
+                return True, None
             except:
-                return False
+                return False, None
 
-        item = (dill.dumps(f), [], {})
-        self._child.iq.put(item)
-        result = self._child.oq.get()
-        if not result:
-            logging.log(logging.ERROR, f'video deacquisition for camera[{self._device}] failed')
+        # check the result
+        result, output = f(self, 'Failed to stop video acquisition')
 
+        # release the acquisition lock
         self._locked = False
 
-        # release the camera
-        self._release()
+        # join the child process
+        self._join_child_process()
 
         return
 
@@ -178,12 +171,18 @@ class VideoStream(MainProcess):
         """
 
         # return if there is no active child or the stream is closed
-        if self._child == None or self._child.acquiring.value == 0:
-            return
+        if self._child is None:
+            raise CameraError('Video stream is closed')
 
-        # the lock blocks if a new image is being written to the image attribute
-        with self._child.buffer.get_lock():
-            data = self._child.buffer[:][:self.width * self.height]
-            image = np.array(data, dtype=np.uint8).reshape([self.height, self.width])
+        # grab the image currently loaded into the buffer
+        try:
 
-        return (True, image)
+            # acquire the buffer object's lock
+            with self._child.buffer.get_lock():
+                data = self._child.buffer[:][:self.width * self.height]
+                image = np.array(data, dtype=np.uint8).reshape([self.height, self.width])
+
+            return (True, image)
+
+        else:
+            return (False, None)

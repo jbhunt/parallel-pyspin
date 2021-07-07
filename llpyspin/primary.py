@@ -9,8 +9,9 @@ import multiprocessing as mp
 from datetime import datetime as dt
 
 # relative imports
-from .processes  import MainProcess, ChildProcess, CameraError, queued
-from .recording  import VideoWriterFFmpeg, VideoWriterSpinnaker
+from .processes import MainProcess, ChildProcess, CameraError, queued
+from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker
+from .secondary import SecondaryCamera
 
 class PrimaryCameraChildProcess(ChildProcess):
     """
@@ -30,23 +31,24 @@ class PrimaryCameraChildProcess(ChildProcess):
 class PrimaryCamera(MainProcess):
     """
     """
-    def __init__(self, device: int=0):
+    def __init__(self, device: int=0, nickname: str=None):
         """
         """
-        super().__init__(device)
+        super().__init__(device, nickname)
         self._spawn_child_process(PrimaryCameraChildProcess)
-        self._secondary_cameras = list()
+        self._primed = False
         return
 
-    def prime(self, filename: str, timestamp: bool=True, bitrate: int=1000000, backend: str='ffmpeg') -> None:
+    def prime(
+        self,
+        filename: str,
+        timestamp: bool=True,
+        bitrate: int=1000000,
+        backend: str='ffmpeg',
+        timeout: int=1
+        ):
         """
-        Get the camera ready to record
-
-        keywords
-        --------
         """
-
-        # check the filename
 
         # stop acquisition if prime is called before the trigger method
         if self.primed:
@@ -66,30 +68,17 @@ class PrimaryCamera(MainProcess):
                 return False, None
 
         # call the function
-        result, output = f(self, 'Failed to set buffer handling mode')
+        result, output = f(self, 'Failed to set buffer mode')
 
-        # configure the hardware trigger
+        # configure the camera to emit a digital signal
         @queued
         def f(child, camera, **kwargs):
 
             try:
-                # create a counter that tracks the onset sensor exposure
-                camera.CounterSelector.SetValue(PySpin.CounterSelector_Counter0)
-                camera.CounterEventSource.SetValue(PySpin.CounterEventSource_ExposureStart)
-                camera.CounterTriggerSource.SetValue(PySpin.CounterTriggerSource_ExposureStart)
-                camera.CounterTriggerActivation.SetValue(PySpin.CounterTriggerActivation_RisingEdge)
-
-                # create a digital signal whose PWD is determined by the counter
+                camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
+                camera.LineSource.SetValue(PySpin.LineSource_ExposureActive)
                 camera.LineSelector.SetValue(PySpin.LineSelector_Line2)
                 camera.V3_3Enable.SetValue(True)
-                camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-                camera.LineSource.SetValue(PySpin.LineSource_Counter0Active)
-
-                #
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
-                camera.TriggerSource.SetValue(PySpin.TriggerSource_Software)
-                camera.TriggerOverlap.SetValue(PySpin.TriggerOverlap_Off)
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
                 return True, None
 
@@ -99,16 +88,13 @@ class PrimaryCamera(MainProcess):
         # call the function
         result, output = f(self, 'Trigger configuration failed')
 
-        # begin acquisition
+        # prime the camera for acquisition
         # NOTE - This is a special case in which the queued decorator won't
         #        work because trying to retrieve the result from the child's
         #        output queue will cause the main process to hang.
         def f(child, camera, **kwargs):
 
             try:
-
-                # begin acquisition
-                camera.BeginAcquisition()
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
@@ -124,32 +110,70 @@ class PrimaryCamera(MainProcess):
                     # TODO - implement a timestamping procedure
                     pass
 
+                timestamps = list()
+
+                # turn the trigger mode on
+                # camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+
                 # wait for the trigger event
                 child.trigger.wait()
 
-                # unset the trigger mode
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+                # turn the trigger mode off to release the camera
+                # camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+
+                # begin acquisition
+                camera.BeginAcquisition()
 
                 # main acquisition loop
-                while obj.acquiring.value:
+                while child.acquiring.value:
 
                     try:
-                        pointer = camera.GetNextImage(1)
+                        pointer = camera.GetNextImage(kwargs['timeout'])
+                        if pointer.IsIncomplete():
+                            continue
+                        else:
+                            if len(timestamps) == 0:
+                                t0 = pointer.GetTimeStamp()
+                                timestamps.append(0)
+                            else:
+                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                timestamps.append(tn)
+                            writer.write(pointer)
+
                     except PySpin.SpinnakerException:
                         continue
 
-                    if not pointer.IsIncomplete():
-                        writer.write(pointer)
-
                     pointer.Release()
 
+                # empty out the device buffer
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_On) # suspend image acquisition
+                while True:
+                    try:
+                        pointer = camera.GetNextImage(kwargs['timeout'])
+                        if pointer.IsIncomplete():
+                            continue
+                        else:
+                            if len(timestamps) == 0:
+                                t0 = pointer.GetTimeStamp()
+                                timestamps.append(0)
+                            else:
+                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                timestamps.append(tn)
+                            writer.write(pointer)
 
-                # reset the trigger mode
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+                    except PySpin.SpinnakerException:
+                        break
+
+                # stop acquisition immediately
+                camera.EndAcquisition()
+
+                # turn the trigger mode back off
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
                 #
                 writer.close()
-                return True, None
+
+                return True, timestamps
 
             except PySpin.SpinnakerException:
                 return False, None
@@ -161,7 +185,8 @@ class PrimaryCamera(MainProcess):
             'shape'     : (self.height, self.width),
             'framerate' : self.framerate,
             'bitrate'   : bitrate,
-            'backend'   : backend
+            'backend'   : backend,
+            'timeout'   : timeout
         }
 
         # place the function in the input queue
@@ -182,10 +207,6 @@ class PrimaryCamera(MainProcess):
         if not self.primed:
             raise CameraError('Camera is not primed')
 
-        # start all of the secondary cameras
-        for camera in self.secondary_cameras:
-            camera.start()
-
         # set the shared acquisition flag to True
         self._child.acquiring.value = 1
 
@@ -199,7 +220,7 @@ class PrimaryCamera(MainProcess):
         Stop video acquisition
         """
 
-        if self._child.acquiring.value != 1:
+        if not self.primed:
             raise CameraError('Camera is not acquiring')
 
         # stop acquisition in the child process main loop
@@ -210,23 +231,18 @@ class PrimaryCamera(MainProcess):
             self._child.trigger.set()
 
         # retrieve the result of video acquisition from the child's output queue
-        result, output = self._child.oq.get()
+        result, timestamps = self._child.oq.get()
 
         # end acquisition and reset the camera
         @queued
         def f(obj, camera, **kwargs):
             try:
-                camera.EndAcquisition()
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
-                camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-                camera.LineSource.SetValue(PySpin.LineSource_FrameTriggerWait)
-                camera.LineInverter.SetValue(True)
                 camera.DeInit()
                 return True, None
             except PySpin.SpinnakerException:
                 return False, None
 
-        result, output = f(self, "Camera deactivation failed")
+        result, output = f(self, 'Failed to stop video acquisition')
 
         # join the child process
         self._join_child_process()
@@ -235,51 +251,10 @@ class PrimaryCamera(MainProcess):
         self._primed = False
         self._locked = False
 
-        # stop all of the secondary cameras
-        for camera in self.secondary_cameras:
-            camera.stop()
+        # respawn the child process
+        self._spawn_child_process(PrimaryCameraChildProcess)
 
-        return
-
-    def prime_secondary_cameras(self, devices: list, filenames: list) -> None:
-        """
-        Prime the secondary camera(s) for video acquisition
-
-        Keywords
-        --------
-        devices : list
-            A list of the camera index or serial number for the secondary camera(s)
-        filenames : list
-            A list of the movie filenames for each secondary camera
-
-        Notes
-        -----
-        Each filename must be an absolute file path with the .mp4 extension
-        """
-
-        #
-        if self.locked:
-            raise CameraError('Cannot prime secondary cameras during acquisition')
-
-        # make sure the number of devices and the number of filenames is equal
-        if len(devices) != len(filenames):
-            raise ValueError('Unequal number of devices and filenames')
-
-        # check that the destination folder for each movie file exists
-        for filename in filenames:
-            if not os.path.exists(os.path.dirname(filename)):
-                raise CameraError(f'{filename} is not a valid filename')
-
-        for device, filename in zip(devices, filenames):
-            camera = SecondaryCamera(device)
-            camera.prime(filename)
-            self._secondary_cameras.append(camera)
-
-        return
-
-    @property
-    def secondary_cameras(self):
-        return self._secondary_cameras
+        return timestamps
 
     #
     @property

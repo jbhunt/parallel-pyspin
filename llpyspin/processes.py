@@ -5,9 +5,6 @@ import PySpin
 import numpy as np
 import multiprocessing as mp
 
-# this is the acquisition flag shared among all cameras
-# ACQUIRING = mp.Value('i', 0)
-
 def queued(f):
     """
     This decorator sends functions through the input queue and retrieves the
@@ -138,7 +135,7 @@ class ChildProcess(mp.Process):
                 result, output = f(self, camera, **kwargs)
 
                 # output
-                self.oq.put(result, output)
+                self.oq.put((result, output))
 
             except queue.Empty:
                 continue
@@ -162,7 +159,7 @@ class MainProcess(object):
     """
     """
 
-    def __init__(self, device: int=0) -> None:
+    def __init__(self, device: int=0, nickname: str=None) -> None:
         """
         """
 
@@ -183,6 +180,12 @@ class MainProcess(object):
         # default class for the child process
         self._child = None
 
+        #
+        if nickname is None:
+            self._nickname = f'camera[{self.device}]'
+        else:
+            self._nickname = nickname
+
         return
 
     def _spawn_child_process(self, cls : ChildProcess) -> None:
@@ -201,7 +204,6 @@ class MainProcess(object):
 
         # create and start the child process
         self._child = cls(self._device)
-        import pdb; pdb.set_trace()
         self._child.start()
         result = self._child.oq.get()
         if not result:
@@ -210,7 +212,7 @@ class MainProcess(object):
             raise CameraError('Failed to spawn child process')
 
         @queued
-        def f(obj, camera, **kwargs):
+        def f(child, camera, **kwargs):
             try:
 
                 #
@@ -228,7 +230,7 @@ class MainProcess(object):
 
                 # set the framerate
                 camera.AcquisitionFrameRateEnable.SetValue(True)
-                camera.AcquisitionFrameRate.SetValue(10)
+                camera.AcquisitionFrameRate.SetValue(30)
 
                 # set the binsize
                 camera.BinningHorizontal.SetValue(2)
@@ -291,7 +293,7 @@ class MainProcess(object):
                 return False, None
 
         # send the function through the queue
-        result, output = f(self, "Failed to release camera")
+        result, output = f(self, 'Failed to release camera')
 
         # join the child process with the main process
         try:
@@ -314,16 +316,16 @@ class MainProcess(object):
             return self._framerate
 
         @queued
-        def f(obj, camera, **kwargs):
+        def f(child, camera, **kwargs):
             try:
-                ouptut = camera.AcquisitionFrameRate.GetValue()
+                output = camera.AcquisitionFrameRate.GetValue()
                 return True, output
             except PySpin.SpinnakerException:
                 return False, None
 
         result, output = f(self, "Camera framerate query failed")
 
-        return ouptut
+        return output
 
     @framerate.setter
     def framerate(self, value):
@@ -338,6 +340,13 @@ class MainProcess(object):
                 camera.AcquisitionFrameRateEnable.SetValue(True)
             min = camera.AcquisitionFrameRate.GetMin()
             max = camera.AcquisitionFrameRate.GetMax()
+            if value == 'max':
+                try:
+                    max = camera.AcquisitionFrameRate.GetMax()
+                    camera.AcquisitionFrameRate.SetValue(max)
+                    return True, None
+                except PySpin.SpinnakerException:
+                    return False, None
             if not min <= value <= max:
                 return False, None
             else:
@@ -350,7 +359,8 @@ class MainProcess(object):
                 except PySpin.SpinnakerException:
                     return False, None
 
-        result, output = f(self, "Failed to set framerate", {'value': value})
+        kwargs = {'value': value}
+        result, output = f(self, "Failed to set framerate", **{'value': value})
 
         return
 
@@ -397,7 +407,7 @@ class MainProcess(object):
             except PySpin.SpinnakerException:
                 return False, None
 
-        result, output = f(self, "Failed to set camera exposure", {'value': value})
+        result, output = f(self, "Failed to set camera exposure", **{'value': value})
 
         return
 
@@ -419,7 +429,7 @@ class MainProcess(object):
 
         result, output = f(self, "Camera binsize query failed")
 
-        return ouptut
+        return output
 
     @binsize.setter
     def binsize(self, value):
@@ -464,7 +474,7 @@ class MainProcess(object):
             except PySpin.SpinnakerException:
                 return False, None
 
-        result, output = f(self, "Failed to set binsize", {'value': value})
+        result, output = f(self, "Failed to set binsize", **{'value': value})
 
         return
 
@@ -496,7 +506,7 @@ class MainProcess(object):
         if self.locked:
             raise AcquisitionPropertyError('Camera is locked during acquisition')
 
-        if (type(roi) != list and type(roi) != tuple) or len(roi) != 4:
+        if (type(value) != list and type(value) != tuple) or len(value) != 4:
             raise AcquisitionPropertyError(f'{value} is not a valid value for the ROI')
 
         @queued
@@ -515,7 +525,7 @@ class MainProcess(object):
             except PySpin.SpinnakerException:
                 return False, None
 
-        result, output = f(self, "Failed to set ROI", {'value': value})
+        result, output = f(self, 'Failed to set ROI', **{'value': value})
 
         return output
 

@@ -7,9 +7,9 @@ import subprocess as sp
 
 class VideoWritingError(Exception):
     def __init__(self, message):
-        super().__ini__(message)
+        super().__init__(message)
 
-class VideoWriterSpinnaker(object):
+class VideoWriterSpinnaker():
     """
     """
 
@@ -168,7 +168,7 @@ class VideoWriterFFmpeg(object):
         """
 
         if not self.running:
-            raise sp.SubprocessError('no open process')
+            raise sp.SubprocessError('No open process')
 
         self.p.stdin.close()
         self.p.wait()

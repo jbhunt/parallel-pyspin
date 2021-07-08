@@ -10,7 +10,7 @@ from datetime import datetime as dt
 
 # relative imports
 from .processes import MainProcess, ChildProcess, CameraError, queued
-from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker
+from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWritingError
 from .secondary import SecondaryCamera
 
 class PrimaryCameraChildProcess(ChildProcess):
@@ -42,7 +42,6 @@ class PrimaryCamera(MainProcess):
     def prime(
         self,
         filename: str,
-        timestamp: bool=True,
         bitrate: int=1000000,
         backend: str='ffmpeg',
         timeout: int=1
@@ -100,15 +99,15 @@ class PrimaryCamera(MainProcess):
                 if kwargs['backend'] == 'ffmpeg':
                     try:
                         writer = VideoWriterFFmpeg()
-                    except:
-                        return False, None
+                    except VideoWritingError:
+                        return False, []
                 elif kwargs['backend'] == 'spinnaker':
                     try:
                         writer = VideoWriterSpinnaker()
                     except:
-                        return False, None
+                        return False, []
                 else:
-                    return False, None
+                    return False, []
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
                 # create the timestamps file
@@ -118,14 +117,8 @@ class PrimaryCamera(MainProcess):
 
                 timestamps = list()
 
-                # turn the trigger mode on
-                # camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
-
                 # wait for the trigger event
                 child.trigger.wait()
-
-                # turn the trigger mode off to release the camera
-                # camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
                 # begin acquisition
                 camera.BeginAcquisition()
@@ -151,8 +144,10 @@ class PrimaryCamera(MainProcess):
 
                     pointer.Release()
 
-                # empty out the device buffer
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On) # suspend image acquisition
+                # suspend image acquisition to empty out the device buffer
+                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+
+                # empty out the computer's device buffer
                 while True:
                     try:
                         pointer = camera.GetNextImage(kwargs['timeout'])

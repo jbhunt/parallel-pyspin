@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 # relative imports
 from .processes import MainProcess, ChildProcess, CameraError, queued
-from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker
+from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWritingError
 
 class SecondaryCamera(MainProcess):
     """
@@ -24,7 +24,6 @@ class SecondaryCamera(MainProcess):
     def prime(self,
         filename,
         primary_camera_framerate,
-        timestamp=True,
         bitrate=1000000,
         backend='ffmpeg',
         timeout=1
@@ -37,6 +36,10 @@ class SecondaryCamera(MainProcess):
 
         if self._child is None:
             self._spawn_child_process(ChildProcess)
+
+        # NOTE - The secondary camera's framerate MUST be less than the primary
+        #        camera's framerate (or the frequency of the external sync signal)
+        #        or else frames will be dropped by the secondary camera
 
         # check if the secondary camera's framerate is < the primary camera's framerate
         if self.framerate < primary_camera_framerate:
@@ -51,25 +54,19 @@ class SecondaryCamera(MainProcess):
                 if kwargs['backend'] == 'ffmpeg':
                     try:
                         writer = VideoWriterFFmpeg()
-                    except:
-                        return False, None
+                    except VideoWritingError:
+                        return False, []
                 elif kwargs['backend'] == 'spinnaker':
                     try:
                         writer = VideoWriterSpinnaker()
                     except:
-                        return False, None
+                        return False, []
                 else:
-                    return False, None
+                    return False, []
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
                 # set the streaming mode to oldest first
                 camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
-
-                # Set the acquisition framerate to the maximum value
-                # The secondary camera's framerate must be >= to the primary camera's framerate
-                # TODO - figure out a smart way to check if ths condition (above) is satisfied
-                fps = camera.AcquisitionFrameRate.GetMax()
-                camera.AcquisitionFrameRate.SetValue(fps)
 
                 # configure the hardware trigger for a secondary camera
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
@@ -109,7 +106,7 @@ class SecondaryCamera(MainProcess):
                     except PySpin.SpinnakerException:
                         continue
 
-                # empty out the device buffer
+                # empty out the computer's device buffer
                 while True:
                     try:
                         pointer = camera.GetNextImage(kwargs['timeout'])
@@ -127,12 +124,13 @@ class SecondaryCamera(MainProcess):
                     except PySpin.SpinnakerException:
                         break
 
+                # stop acquisition
                 camera.EndAcquisition()
 
                 # reset the trigger mode
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
-                #
+                # close the video writer
                 writer.close()
 
                 return True, timestamps

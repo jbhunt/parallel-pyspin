@@ -109,6 +109,24 @@ class SecondaryCamera(MainProcess):
                     except PySpin.SpinnakerException:
                         continue
 
+                # empty out the device buffer
+                while True:
+                    try:
+                        pointer = camera.GetNextImage(kwargs['timeout'])
+                        if pointer.IsIncomplete():
+                            continue
+                        else:
+                            if len(timestamps) == 0:
+                                t0 = pointer.GetTimeStamp()
+                                timestamps.append(0)
+                            else:
+                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                timestamps.append(tn)
+                            writer.write(pointer)
+
+                    except PySpin.SpinnakerException:
+                        break
+
                 camera.EndAcquisition()
 
                 # reset the trigger mode

@@ -98,9 +98,15 @@ class PrimaryCamera(MainProcess):
 
                 # initialize the video writer
                 if kwargs['backend'] == 'ffmpeg':
-                    writer = VideoWriterFFmpeg()
+                    try:
+                        writer = VideoWriterFFmpeg()
+                    except:
+                        return False, None
                 elif kwargs['backend'] == 'spinnaker':
-                    writer = VideoWriterSpinnaker()
+                    try:
+                        writer = VideoWriterSpinnaker()
+                    except:
+                        return False, None
                 else:
                     return False, None
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])

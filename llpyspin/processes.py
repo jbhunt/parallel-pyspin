@@ -87,7 +87,7 @@ class ChildProcess(mp.Process):
         try:
 
             # create instances of the system and cameras list
-            system  = PySpin.System.GetInstance()
+            system = PySpin.System.GetInstance()
             cameras = system.GetCameras()
 
             # instantiate the camera
@@ -105,11 +105,14 @@ class ChildProcess(mp.Process):
 
             # clean-up
             try:
+                if camera.IsStreaming():
+                    camera.EndAcquisition()
+                if camera.IsInitialized():
+                    camera.DeInit()
                 del camera
             except NameError:
                 pass
             cameras.Clear()
-            del cameras
             try:
                 system.ReleaseInstance()
             except PySpin.SpinnakerException:
@@ -142,11 +145,14 @@ class ChildProcess(mp.Process):
 
         # clean-up
         try:
+            if camera.IsStreaming():
+                camera.EndAcquisition()
+            if camera.IsInitialized():
+                camera.DeInit()
             del camera
         except NameError:
             pass
         cameras.Clear()
-        del cameras
         try:
             system.ReleaseInstance()
         except PySpin.SpinnakerException:

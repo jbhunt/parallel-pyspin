@@ -1,7 +1,13 @@
 import os
+import sys
 import PySpin
 import numpy as np
+import pathlib as pl
 import subprocess as sp
+
+class VideoWritingError(Exception):
+    def __init__(self, message):
+        super().__ini__(message)
 
 class VideoWriterSpinnaker(object):
     """
@@ -18,6 +24,11 @@ class VideoWriterSpinnaker(object):
     def open(self, filename, shape=(1080, 1440), framerate=30, bitrate=1000000):
         """
         """
+
+        # make the destination directory if necessary
+        path = pl.Path(filename)
+        if not path.parent.exists():
+            os.mkdir(str(path.parent))
 
         basename, extension = filename.split('.')
         if extension == 'mp4':
@@ -76,9 +87,23 @@ class VideoWriterFFmpeg(object):
     """
     """
 
-    def __init__(self):
+    def __init__(self, print_ffmpeg_path=False):
         """
         """
+
+        # check if ffmpeg is installed
+        if sys.platform == "linux" or platform == "linux2":
+            p = sp.Popen('which ffmpeg', stdout=sp.PIPE, shell=True)
+        elif sys.platform == "win32":
+            p = sp.Popen('Where-Object ffmpeg', stdout=sp.PIPE, shell=True)
+        else:
+            raise VideoWritingError('Only Windows and Linux operating systems are supported')
+
+        out, err = p.communicate()
+        if p.returncode == 1:
+            raise VideoWritingError('FFmpeg not installed')
+        if p.returncode == 0 and print_ffmpeg_path:
+            print(f'FFmpeg executable found at {out.decode()}')
 
         return
 
@@ -89,8 +114,13 @@ class VideoWriterFFmpeg(object):
         if self.running:
             raise sp.SubprocessError('an open process is still running')
 
+        # make the destination directory if necessary
+        path = pl.Path(filename)
+        if not path.parent.exists():
+            os.mkdir(str(path.parent))
+
         # command definition
-        command = [
+        elements = [
             'ffmpeg',
             '-y',
             '-f', 'rawvideo',
@@ -107,8 +137,9 @@ class VideoWriterFFmpeg(object):
             '-vcodec', 'libx264',
             filename
         ]
+        command = ' '.join(elements)
 
-        self.p = sp.Popen(command, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+        self.p = sp.Popen(command, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL, shell=True)
 
         return self
 

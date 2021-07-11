@@ -1,13 +1,180 @@
 import os
 import sys
+import queue
 import PySpin
 import numpy as np
 import pathlib as pl
 import subprocess as sp
+import multiprocessing as mp
+
+# try to import OpenCV
+try:
+    import cv2 as cv
+    OPENCV_IMPORT_RESULT = True
+except ModuleNotFoundError:
+    OPENCV_IMPORT_RESULT = False
 
 class VideoWritingError(Exception):
     def __init__(self, message):
         super().__init__(message)
+
+class VideoWriterOpenCVChildProcess(mp.Process):
+    """
+    """
+
+    def __init__(self, filename, shape=(1080, 1440), framerate=30):
+        """
+        """
+
+        super().__init__()
+
+        # absolute file path to the movie
+        self.filename = filename
+
+        # multiprocessing queue for image transfer
+        self.q = mp.Queue()
+
+        # started flag
+        self.started = mp.Value('i', 0)
+
+        # video parameters
+        self.height, self.width = shape
+        self.framerate = framerate
+
+        return
+
+    def run(self):
+        """
+        """
+
+        # select the appropriate codec
+        if self.filename.suffix == '.mp4':
+            codec = 'mp4v'
+        elif self.filename.suffix == '.avi':
+            codec = 'MJPG'
+        else:
+            codec = 'H264'
+
+        # create the video writer object
+        fourcc = cv.VideoWriter_fourcc(*codec)
+        writer = cv.VideoWriter(
+            str(self.filename),
+            fourcc,
+            self.framerate,
+            (self.width, self.height),
+            False
+        )
+
+        # main loop
+        while self.started.value:
+            try:
+                image = self.q.get(block=False)
+                writer.write(image)
+            except queue.Empty:
+                continue
+
+        # close the writer object
+        writer.release()
+
+        return
+
+    def start(self):
+        """
+        """
+
+        # set the started flag to True
+        self.started.value = True
+
+        super().start()
+
+        return
+
+    def join(self, timeout=5):
+        """
+        """
+
+        # break out of the main loop in the run method
+        self.started.value = 0
+
+        super().join(timeout)
+
+        return
+
+class VideoWriterOpenCV():
+    """
+    """
+
+    def __init__(self):
+        """
+        """
+
+        # Raise an error if OpenCV is not installed
+        global OPENCV_IMPORT_RESULT
+        if OPENCV_IMPORT_RESULT == False:
+            raise VideoWritingError('OpenCV import failed')
+
+        self.p = None
+
+        return
+
+    def open(self, filename, shape=(1080, 1440), framerate=30, bitrate=None):
+        """
+        """
+
+        if self.p is not None:
+            raise VideoWritingError('Video writer is already open')
+
+        path = pl.Path(filename)
+
+        # create the parent directory if necessary
+        if not path.parent.exists():
+            path.parent.mkdir()
+
+        # convert the file name to an absolute file path
+        if not path.is_absolute():
+            path = path.absolute()
+
+        kwargs = {
+            'filename': path,
+            'shape': shape,
+            'framerate': framerate,
+        }
+        self.p = VideoWriterOpenCVChildProcess(**kwargs)
+        self.p.start()
+
+        return
+
+    def close(self):
+        """
+        """
+
+        if self.p is None:
+            raise VideoWritingError('Video writer is already closed')
+        else:
+            try:
+                self.p.join(5)
+                self.p = None
+            except mp.TimeoutError:
+                self.p.terminate()
+                self.p.join()
+                self.p = None
+                raise VideoWritingError('Child process was terminated after hanging')
+
+        return
+
+    def write(self, pointer):
+        """
+        """
+
+        if self.p is None:
+            raise VideoWritingError('Video writer is closed')
+        else:
+            if isinstance(pointer, np.ndarray):
+                self.p.q.put(pointer)
+            elif isinstance(pointer, PySpin.ImagePtr):
+                self.p.q.put(pointer.GetNDArray())
+            else:
+                raise VideoWritingError(f'Cannot write object of type {type(pointer)} to video file')
 
 class VideoWriterSpinnaker():
     """

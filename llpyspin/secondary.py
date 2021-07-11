@@ -61,6 +61,11 @@ class SecondaryCamera(MainProcess):
                         writer = VideoWriterSpinnaker()
                     except:
                         return False, []
+                elif kwargs['backend'] == 'OpenCV':
+                    try:
+                        writer = VideoWriterOpenCV()
+                    except VideoWritingError:
+                        return False, []
                 else:
                     return False, []
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])

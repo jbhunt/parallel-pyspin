@@ -83,7 +83,7 @@ class VideoWriterOpenCVChildProcess(mp.Process):
         """
 
         # set the started flag to True
-        self.started.value = True
+        self.started.value = 1
 
         super().start()
 

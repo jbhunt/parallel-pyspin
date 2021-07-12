@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 # relative imports
 from .processes import MainProcess, ChildProcess, CameraError, queued
-from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWritingError
+from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWriterOpenCV, VideoWritingError
 
 class SecondaryCamera(MainProcess):
     """
@@ -25,7 +25,7 @@ class SecondaryCamera(MainProcess):
         filename,
         primary_camera_framerate,
         bitrate=1000000,
-        backend='ffmpeg',
+        backend='Spinnaker',
         timeout=1
         ):
         """
@@ -51,17 +51,17 @@ class SecondaryCamera(MainProcess):
             try:
 
                 # initialize the video writer
-                if kwargs['backend'] == 'ffmpeg':
+                if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
                     try:
                         writer = VideoWriterFFmpeg()
                     except VideoWritingError:
                         return False, []
-                elif kwargs['backend'] == 'spinnaker':
+                elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
                     try:
                         writer = VideoWriterSpinnaker()
                     except:
                         return False, []
-                elif kwargs['backend'] == 'OpenCV':
+                elif kwargs['backend'] in ['opencv', 'OpenCV']:
                     try:
                         writer = VideoWriterOpenCV()
                     except VideoWritingError:
@@ -72,6 +72,8 @@ class SecondaryCamera(MainProcess):
 
                 # set the streaming mode to oldest first
                 camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+                camera.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
+                camera.TLStream.StreamBufferCountManual.SetValue(camera.TLStream.StreamBufferCountManual.GetMax())
 
                 # configure the hardware trigger for a secondary camera
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
@@ -140,7 +142,7 @@ class SecondaryCamera(MainProcess):
 
                 return True, timestamps
 
-            except PySpin.SpinnakerException:
+            except (PySpin.SpinnakerException, Exception):
                 return False, None
 
         # NOTE - The acquisition flag needs to be set here before placing the
@@ -150,7 +152,6 @@ class SecondaryCamera(MainProcess):
         #
         kwargs = {
             'filename'  : filename,
-            'timestamp' : timestamp,
             'shape'     : (self.height, self.width),
             'framerate' : primary_camera_framerate,
             'bitrate'   : bitrate,
@@ -160,6 +161,7 @@ class SecondaryCamera(MainProcess):
         item = (dill.dumps(f), kwargs)
         self._child.iq.put(item)
         self._primed = True
+        self._locked = True
 
         return
 

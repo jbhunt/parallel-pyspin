@@ -10,7 +10,7 @@ from datetime import datetime as dt
 
 # relative imports
 from .processes import MainProcess, ChildProcess, CameraError, queued
-from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWritingError
+from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWriterOpenCV, VideoWritingError
 from .secondary import SecondaryCamera
 
 class PrimaryCameraChildProcess(ChildProcess):
@@ -43,7 +43,7 @@ class PrimaryCamera(MainProcess):
         self,
         filename: str,
         bitrate: int=1000000,
-        backend: str='ffmpeg',
+        backend: str='Spinnaker',
         timeout: int=1
         ):
         """
@@ -58,10 +58,13 @@ class PrimaryCamera(MainProcess):
             self._spawn_child_process(PrimaryCameraChildProcess)
 
         # set the buffer handling mode to oldest first (instead of newest only)
+        # and increase the number of bufered images allowed in memory
         @queued
         def f(child, camera, **kwargs):
             try:
                 camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+                camera.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
+                camera.TLStream.StreamBufferCountManual.SetValue(camera.TLStream.StreamBufferCountManual.GetMax())
                 return True, None
             except PySpin.SpinnakerException:
                 return False, None
@@ -96,17 +99,17 @@ class PrimaryCamera(MainProcess):
             try:
 
                 # initialize the video writer
-                if kwargs['backend'] == 'ffmpeg':
+                if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
                     try:
                         writer = VideoWriterFFmpeg()
                     except VideoWritingError:
                         return False, []
-                elif kwargs['backend'] == 'spinnaker':
+                elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
                     try:
                         writer = VideoWriterSpinnaker()
                     except:
                         return False, []
-                elif kwargs['backend'] == 'OpenCV':
+                elif kwargs['backend'] in ['opencv', 'OpenCV']:
                     try:
                         writer = VideoWriterOpenCV()
                     except VideoWritingError:
@@ -114,11 +117,6 @@ class PrimaryCamera(MainProcess):
                 else:
                     return False, []
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
-
-                # create the timestamps file
-                if kwargs['timestamp']:
-                    # TODO - implement a timestamping procedure
-                    pass
 
                 timestamps = list()
 
@@ -181,13 +179,12 @@ class PrimaryCamera(MainProcess):
 
                 return True, timestamps
 
-            except PySpin.SpinnakerException:
+            except (PySpin.SpinnakerException, Exception):
                 return False, None
 
         # kwargs for configuring up the video writing
         kwargs = {
             'filename'  : filename,
-            'timestamp' : timestamp,
             'shape'     : (self.height, self.width),
             'framerate' : self.framerate,
             'bitrate'   : bitrate,

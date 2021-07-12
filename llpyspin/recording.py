@@ -262,7 +262,7 @@ class VideoWriterFFmpeg(object):
         if sys.platform == "linux" or platform == "linux2":
             p = sp.Popen('which ffmpeg', stdout=sp.PIPE, shell=True)
         elif sys.platform == "win32":
-            p = sp.Popen('Where-Object ffmpeg', stdout=sp.PIPE, shell=True)
+            p = sp.Popen('where ffmpeg', stdout=sp.PIPE, shell=True)
         else:
             raise VideoWritingError('Only Windows and Linux operating systems are supported')
 

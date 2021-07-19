@@ -10,7 +10,7 @@ from datetime import datetime as dt
 
 # relative imports
 from .processes import MainProcess, ChildProcess, CameraError, queued
-from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWriterOpenCV, VideoWritingError
+from .recording import FFmpegVideoWriter, SpinnakerVideoWriter, OpenCVVideoWriter, VideoWritingError
 from .secondary import SecondaryCamera
 
 class PrimaryCameraChildProcess(ChildProcess):
@@ -57,6 +57,10 @@ class PrimaryCamera(MainProcess):
         if self._child is None:
             self._spawn_child_process(PrimaryCameraChildProcess)
 
+        # reset the trigger if priming after instantiation
+        if self._child.trigger.is_set():
+            self._child.trigger.clear()
+
         # set the buffer handling mode to oldest first (instead of newest only)
         # and increase the number of bufered images allowed in memory
         @queued
@@ -101,17 +105,17 @@ class PrimaryCamera(MainProcess):
                 # initialize the video writer
                 if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
                     try:
-                        writer = VideoWriterFFmpeg()
+                        writer = FFmpegVideoWriter()
                     except VideoWritingError:
                         return False, []
                 elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
                     try:
-                        writer = VideoWriterSpinnaker()
+                        writer = SpinnakerVideoWriter()
                     except:
                         return False, []
                 elif kwargs['backend'] in ['opencv', 'OpenCV']:
                     try:
-                        writer = VideoWriterOpenCV()
+                        writer = OpenCVVideoWriter()
                     except VideoWritingError:
                         return False, []
                 else:
@@ -136,7 +140,7 @@ class PrimaryCamera(MainProcess):
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
-                                timestamps.append(0)
+                                timestamps.append(0.0)
                             else:
                                 tn = (pointer.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
@@ -145,12 +149,16 @@ class PrimaryCamera(MainProcess):
                     except PySpin.SpinnakerException:
                         continue
 
-                    pointer.Release()
+                    # This will raise an error if using the dummy camera pointer
+                    try:
+                        pointer.Release()
+                    except PySpin.SpinnakerException:
+                        continue
 
                 # suspend image acquisition to empty out the device buffer
                 camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-                # empty out the computer's device buffer
+                # empty out the host computer's device buffer
                 while True:
                     try:
                         pointer = camera.GetNextImage(kwargs['timeout'])
@@ -159,11 +167,17 @@ class PrimaryCamera(MainProcess):
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
-                                timestamps.append(0)
+                                timestamps.append(0.0)
                             else:
                                 tn = (pointer.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
                             writer.write(pointer)
+
+                        # This will raise an error if using the dummy camera pointer
+                        try:
+                            pointer.Release()
+                        except PySpin.SpinnakerException:
+                            continue
 
                     except PySpin.SpinnakerException:
                         break
@@ -236,28 +250,19 @@ class PrimaryCamera(MainProcess):
         # retrieve the result of video acquisition from the child's output queue
         result, timestamps = self._child.oq.get()
 
-        # end acquisition and reset the camera
-        @queued
-        def f(obj, camera, **kwargs):
-            try:
-                camera.DeInit()
-                return True, None
-            except PySpin.SpinnakerException:
-                return False, None
-
-        result, output = f(self, 'Failed to stop video acquisition')
-
-        # join the child process
-        self._join_child_process()
-
         # reset the primed and locked flags
         self._primed = False
         self._locked = False
 
-        # respawn the child process
-        self._spawn_child_process(PrimaryCameraChildProcess)
+        return np.array(timestamps)
 
-        return timestamps
+    def release(self):
+        """
+        """
+
+        self._join_child_process()
+
+        return
 
     #
     @property

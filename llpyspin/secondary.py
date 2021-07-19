@@ -5,7 +5,7 @@ import multiprocessing as mp
 
 # relative imports
 from .processes import MainProcess, ChildProcess, CameraError, queued
-from .recording import VideoWriterFFmpeg, VideoWriterSpinnaker, VideoWriterOpenCV, VideoWritingError
+from .recording import FFmpegVideoWriter, SpinnakerVideoWriter, OpenCVVideoWriter, VideoWritingError
 
 class SecondaryCamera(MainProcess):
     """
@@ -50,20 +50,19 @@ class SecondaryCamera(MainProcess):
         def f(child, camera, **kwargs):
             try:
 
-                # initialize the video writer
                 if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
                     try:
-                        writer = VideoWriterFFmpeg()
+                        writer = FFmpegVideoWriter()
                     except VideoWritingError:
                         return False, []
                 elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
                     try:
-                        writer = VideoWriterSpinnaker()
+                        writer = SpinnakerVideoWriter()
                     except:
                         return False, []
                 elif kwargs['backend'] in ['opencv', 'OpenCV']:
                     try:
-                        writer = VideoWriterOpenCV()
+                        writer = OpenCVVideoWriter()
                     except VideoWritingError:
                         return False, []
                 else:
@@ -102,13 +101,17 @@ class SecondaryCamera(MainProcess):
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
-                                timestamps.append(0)
+                                timestamps.append(0.0)
                             else:
                                 tn = (pointer.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
                             writer.write(pointer)
 
-                        pointer.Release()
+                        # This will raise an error if using the dummy camera pointer
+                        try:
+                            pointer.Release()
+                        except PySpin.SpinnakerException:
+                            continue
 
                     except PySpin.SpinnakerException:
                         continue
@@ -122,11 +125,17 @@ class SecondaryCamera(MainProcess):
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
-                                timestamps.append(0)
+                                timestamps.append(0.0)
                             else:
                                 tn = (pointer.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
                             writer.write(pointer)
+
+                        # This will raise an error if using the dummy camera pointer
+                        try:
+                            pointer.Release()
+                        except PySpin.SpinnakerException:
+                            continue
 
                     except PySpin.SpinnakerException:
                         break
@@ -178,27 +187,18 @@ class SecondaryCamera(MainProcess):
         # query the result of video acquisition
         result, timestamps = self._child.oq.get()
 
-        @queued
-        def f(obj, camera, **kwargs):
-            try:
-                if camera.IsStreaming():
-                    camera.EndAcquisition()
-                camera.DeInit()
-                return True, None
-            except:
-                return False, None
-
-        result, output = f(self, 'Failed to stop video acquisition')
-
-        self._join_child_process()
-
         self._primed = False
         self._locked = False
 
-        # respawn child process
-        self._spawn_child_process(ChildProcess)
+        return np.array(timestamps)
 
-        return timestamps
+    def release(self):
+        """
+        """
+
+        self._join_child_process()
+
+        return
 
     @property
     def primed(self):

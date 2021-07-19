@@ -4,6 +4,7 @@ import queue
 import PySpin
 import numpy as np
 import multiprocessing as mp
+from .dummy import DummyCameraPointer
 
 def queued(f):
     """
@@ -91,11 +92,14 @@ class ChildProcess(mp.Process):
             cameras = system.GetCameras()
 
             # instantiate the camera
-            if type(self._device) == str:
-                camera = cameras.GetBySerial(self._device)
-
             if type(self._device) == int:
                 camera = cameras.GetByIndex(self._device)
+
+            elif type(self._device) == str and self._device != 'dummy':
+                camera = cameras.GetBySerial(self._device)
+
+            elif type(self._device) == str and self._device == 'dummy':
+                camera = DummyCameraPointer()
 
             #
             result = True
@@ -466,7 +470,7 @@ class MainProcess(object):
                 xmax = camera.BinningHorizontal.GetMax()
                 ymin = camera.BinningVertical.GetMin()
                 ymax = camera.BinningVertical.GetMax()
-                if not (xmin <= xbin <= xmax) or (not ymin <= ybin <= ymax):
+                if xmin >= xbin >= xmax or ymin >= ybin >= ymax:
                     return False, None
                 else:
                     camera.BinningHorizontal.SetValue(xbin)

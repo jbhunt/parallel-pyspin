@@ -18,7 +18,7 @@ class VideoWritingError(Exception):
     def __init__(self, message):
         super().__init__(message)
 
-class VideoWriterOpenCVChildProcess(mp.Process):
+class VideoWriterChildProcess(mp.Process):
     """
     """
 
@@ -42,6 +42,18 @@ class VideoWriterOpenCVChildProcess(mp.Process):
         self.framerate = framerate
 
         return
+
+    def start(self):
+        self.started.value = 1
+        super().start()
+
+    def join(self, timeout=5):
+        self.started.value = 0
+        super().join(timeout)
+
+class OpenCVVideoWriterChildProcess(VideoWriterChildProcess):
+    """
+    """
 
     def run(self):
         """
@@ -78,76 +90,105 @@ class VideoWriterOpenCVChildProcess(mp.Process):
 
         return
 
-    def start(self):
+class SpinnakerVideoWriterChildProcess(VideoWriterChildProcess):
+    """
+    """
+
+    def __init__(self, filename, shape=(1080, 1440), framerate=30, bitrate=1000000):
+        super().__init__(filename, shape, framerate)
+        self.bitrate = bitrate
+
+    def run(self):
         """
         """
 
-        # set the started flag to True
-        self.started.value = 1
+        if self.filename.suffix == '.mp4':
+            container = PySpin.MJPGOption()
+        elif self.filename.suffix == '.avi':
+            container = PySpin.AVIOption()
+        else:
+            container = PySpin.H264Option()
+            container.bitrate = self.bitrate
+            container.height = self.height
+            container.width = self.width
+        container.frameRate = self.framerate
 
-        super().start()
+        # initialize the writer
+        writer = PySpin.SpinVideo()
+        writer.Open(str(self.filename), container)
+
+        while self.started.value:
+            try:
+                image = self.q.get(timeout=False)
+                pointer = PySpin.Image_Create(self.width, self.height, 0, 0, PySpin.PixelFormat_Mono8, image)
+                writer.Append(pointer)
+            except queue.Empty:
+                continue
+
+        writer.Close()
 
         return
 
-    def join(self, timeout=5):
-        """
-        """
+class FFmpegVideoWriterChildProcess(VideoWriterChildProcess):
 
-        # break out of the main loop in the run method
-        self.started.value = 0
+    def run(self):
+        args = (
+            'ffmpeg',
+            '-y',
+            '-f', 'rawvideo',
+            '-vcodec', 'rawvideo',
+            '-s', f'{self.width}x{self.height}',
+            '-r', f'{self.framerate}',
+            '-pix_fmt', 'rgb24',
+            '-i', '-',
+            '-preset', 'veryslow',
+            '-pix_fmt', 'yuv420p',
+            '-filter:v', 'hue=s=0', # this is important - it converts the video to grayscale
+            '-an',
+            '-crf', '0',
+            '-vcodec', 'libx264',
+            str(self.filename)
+        )
+        command = ' '.join(args)
 
-        super().join(timeout)
+        p = sp.Popen(command, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL, shell=True)
+
+        while self.started.value:
+            try:
+                image = self.q.get(timeout=False)
+                if len(image.shape) != 3:
+                    image = np.stack((image,) * 3, axis=-1)
+                p.stdin.write(image)
+            except queue.Empty:
+                continue
+
+        p.stdin.close()
+        p.wait()
 
         return
 
-class VideoWriterOpenCV():
+class VideoWriter():
     """
     """
 
     def __init__(self):
-        """
-        """
-
-        # Raise an error if OpenCV is not installed
-        global OPENCV_IMPORT_RESULT
-        if OPENCV_IMPORT_RESULT == False:
-            raise VideoWritingError('OpenCV import failed')
-
         self.p = None
 
-        return
-
-    def open(self, filename, shape=(1080, 1440), framerate=30, bitrate=None):
-        """
-        """
-
+    def open(self, filename):
         if self.p is not None:
             raise VideoWritingError('Video writer is already open')
 
-        path = pl.Path(filename)
+        self.filename = pl.Path(filename)
 
         # create the parent directory if necessary
-        if not path.parent.exists():
-            path.parent.mkdir()
+        if not self.filename.parent.exists():
+            self.filename.parent.mkdir()
 
         # convert the file name to an absolute file path
-        if not path.is_absolute():
-            path = path.absolute()
-
-        kwargs = {
-            'filename': path,
-            'shape': shape,
-            'framerate': framerate,
-        }
-        self.p = VideoWriterOpenCVChildProcess(**kwargs)
-        self.p.start()
-
-        return
+        if not self.filename.is_absolute():
+            self.filename = self.filename.absolute()
 
     def close(self):
-        """
-        """
-
         if self.p is None:
             raise VideoWritingError('Video writer is already closed')
         else:
@@ -163,9 +204,6 @@ class VideoWriterOpenCV():
         return
 
     def write(self, pointer):
-        """
-        """
-
         if self.p is None:
             raise VideoWritingError('Video writer is closed')
         else:
@@ -176,7 +214,7 @@ class VideoWriterOpenCV():
             else:
                 raise VideoWritingError(f'Cannot write object of type {type(pointer)} to video file')
 
-class VideoWriterSpinnaker():
+class OpenCVVideoWriter(VideoWriter):
     """
     """
 
@@ -184,7 +222,40 @@ class VideoWriterSpinnaker():
         """
         """
 
-        self._opened = False
+        super().__init__()
+
+        # Raise an error if OpenCV is not installed
+        global OPENCV_IMPORT_RESULT
+        if OPENCV_IMPORT_RESULT == False:
+            raise VideoWritingError('OpenCV import failed')
+
+        return
+
+    def open(self, filename, shape=(1080, 1440), framerate=30, bitrate=None):
+        """
+        """
+
+        super().open(filename)
+
+        kwargs = {
+            'filename': self.filename,
+            'shape': shape,
+            'framerate': framerate,
+        }
+        self.p = OpenCVVideoWriterChildProcess(**kwargs)
+        self.p.start()
+
+        return
+
+class SpinnakerVideoWriter(VideoWriter):
+    """
+    """
+
+    def __init__(self):
+        """
+        """
+
+        super().__init__()
 
         return
 
@@ -192,71 +263,35 @@ class VideoWriterSpinnaker():
         """
         """
 
-        # make the destination directory if necessary
-        path = pl.Path(filename)
-        if not path.parent.exists():
-            os.mkdir(str(path.parent))
+        super().open(filename)
 
-        basename, extension = filename.split('.')
-        if extension == 'mp4':
-            container = PySpin.MJPGOption()
-            container.bitrate = bitrate
-        elif extension == 'avi':
-            container = PySpin.AVIOption()
-        else:
-            container = PySpin.H264Option()
-            container.bitrate = bitrate
-            container.height = shape[0]
-            container.width = shape[1]
-        container.frameRate = framerate
-
-        #
-        self._writer = PySpin.SpinVideo()
-        self._writer.Open(filename, container)
-
-        #
-        self._opened = True
-
-        return
-
-    def write(self, pointer):
-        """
-        """
-
-        if not self.opened:
-            return
-
-        pointer = pointer.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR)
-
-        self._writer.Append(pointer)
+        kwargs = {
+            'filename': self.filename,
+            'shape': shape,
+            'framerate': framerate,
+            'bitrate': bitrate
+        }
+        self.p = SpinnakerVideoWriterChildProcess(**kwargs)
+        self.p.start()
 
         return
 
     def close(self):
-        """
-        """
+        super().close()
+        actual = f'{str(self.filename.name)}-0000.avi'
+        src = str(self.filename.parent / pl.Path(actual))
+        os.rename(src, str(self.filename))
 
-        if not self.opened:
-            return
 
-        self._writer.Close()
-
-        self._opened = False
-
-        return
-
-    #
-    @property
-    def opened(self):
-        return self._opened
-
-class VideoWriterFFmpeg(object):
+class FFmpegVideoWriter(VideoWriter):
     """
     """
 
     def __init__(self, print_ffmpeg_path=False):
         """
         """
+
+        super().__init__()
 
         # check if ffmpeg is installed
         if sys.platform == "linux" or platform == "linux2":
@@ -268,81 +303,22 @@ class VideoWriterFFmpeg(object):
 
         out, err = p.communicate()
         if p.returncode == 1:
-            raise VideoWritingError('FFmpeg not installed')
+            raise VideoWritingError('FFmpeg not installed (or binary not locatable)')
         if p.returncode == 0 and print_ffmpeg_path:
             print(f'FFmpeg executable found at {out.decode()}')
 
         return
 
-    def open(self, filename, shape=(1080, 1440), framerate=30, bitrate=1000000):
+    def open(self, filename, shape=(1080, 1440), framerate=30, bitrate=None):
         """
         """
 
-        if self.running:
-            raise sp.SubprocessError('an open process is still running')
+        super().open(filename)
 
-        # make the destination directory if necessary
-        path = pl.Path(filename)
-        if not path.parent.exists():
-            os.mkdir(str(path.parent))
-
-        # command definition
-        elements = [
-            'ffmpeg',
-            '-y',
-            '-f', 'rawvideo',
-            '-vcodec', 'rawvideo',
-            '-s', f'{shape[1]}x{shape[0]}',
-            '-r', f'{framerate}',
-            '-pix_fmt', 'rgb24',
-            '-i', '-',
-            '-preset', 'veryslow',
-            '-pix_fmt', 'yuv420p',
-            '-filter:v', 'hue=s=0', # this is important - it converts the video to grayscale
-            '-an',
-            '-crf', '0',
-            '-vcodec', 'libx264',
-            filename
-        ]
-        command = ' '.join(elements)
-
-        self.p = sp.Popen(command, stdin=sp.PIPE, stdout=sp.DEVNULL, stderr=sp.DEVNULL, shell=True)
-
-        return self
-
-    def write(self, pointer):
-        """
-        """
-
-        if not self.running:
-            raise sp.SubprocessError('no open process')
-
-        if type(pointer) == np.ndarray:
-            image = pointer
-        else:
-            image = pointer.GetNDArray()
-
-        # duplicate the array along a third axis
-        if len(image.shape) != 3:
-            image = np.stack((image,) * 3, axis=-1)
-
-        self.p.stdin.write(image)
-
-        return
-
-    def close(self):
-        """
-        """
-
-        if not self.running:
-            raise sp.SubprocessError('No open process')
-
-        self.p.stdin.close()
-        self.p.wait()
-
-        return
-
-    # this flag monitors the state of the child process
-    @property
-    def running(self):
-        return True if hasattr(self, 'p') and self.p.poll() == None else False
+        kwargs = {
+            'filename': self.filename,
+            'shape': shape,
+            'framerate': framerate,
+        }
+        self.p = FFmpegVideoWriterChildProcess(**kwargs)
+        self.p.start()

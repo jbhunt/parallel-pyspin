@@ -15,11 +15,14 @@ class StreamingChildProcess(ChildProcess):
         """
         """
 
-        # create a shared memory list for buffering a single image
-        self.buffer = mp.Manager().list()
-
         #
         super().__init__(device)
+
+        # This queue acts as a buffer holding a single image
+        self.buffer = mp.Queue()
+
+        # This lock prevents reading and writing to the buffer at the same time
+        self.qlock = mp.Lock()
 
         return
 
@@ -65,12 +68,15 @@ class VideoStream(MainProcess):
                         #
                         if not image.IsIncomplete():
 
-                            # convert the image
-                            data = image.Convert(PySpin.PixelFormat_Mono8, PySpin.HQ_LINEAR).GetNDArray().flatten()
-
                             # store the image (critical - use lock)
-                            with child.buffer.get_lock():
-                                child.buffer[:] = data
+                            with child.qlock:
+
+                                # remove the previous image
+                                if child.buffer.qsize() > 0:
+                                    previous = child.buffer.get()
+
+                                # replace with the current image
+                                child.buffer.put(image.GetNDArray())
 
                     except PySpin.SpinnakerException:
                         continue
@@ -85,7 +91,8 @@ class VideoStream(MainProcess):
             'shape'   : (self.width, self.height),
             'timeout' : 1
         }
-        self._child.iq.put(dill.dumps(f), kwargs)
+        item = (dill.dumps(f), kwargs)
+        self._child.iq.put(item)
         self._locked = True
 
         return
@@ -107,9 +114,12 @@ class VideoStream(MainProcess):
             pass
 
         @queued
-        def f(obj, camera, *args, **kwargs):
+        def f(child, camera):
             try:
-                camera.EndAcquisition()
+                if camera.IsStreaming():
+                    camera.EndAcquisition()
+                if camera.IsInitialized():
+                    camera.DeInit()
                 return True, None
             except:
                 return False, None
@@ -135,9 +145,8 @@ class VideoStream(MainProcess):
 
         # grab the image most recently buffered image
         try:
-            with self._child.buffer.get_lock():
-                data = self._child.buffer[:]
-            image = np.array(data, dtype=np.uint8).reshape([self.height, self.width])
+            with self._child.qlock:
+                image = self._child.buffer.get()
             return (True, image)
 
         except:

@@ -198,7 +198,7 @@ class MainProcess(object):
 
         return
 
-    def _spawn_child_process(self, cls : ChildProcess) -> None:
+    def _spawn_child_process(self, cls : ChildProcess, **kwargs) -> None:
         """
         Create an instance of the child process and initialize the camera
 
@@ -213,7 +213,7 @@ class MainProcess(object):
             self._join_child_process()
 
         # create and start the child process
-        self._child = cls(self._device)
+        self._child = cls(self._device, **kwargs)
         self._child.start()
         result = self._child.oq.get()
         if not result:

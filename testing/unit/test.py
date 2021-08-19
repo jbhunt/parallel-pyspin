@@ -8,6 +8,11 @@ from llpyspin.secondary import SecondaryCamera
 from llpyspin.streaming import VideoStream
 from llpyspin.recording import SpinnakerVideoWriter, OpenCVVideoWriter, FFmpegVideoWriter
 
+# environment variables
+USER_HOME_DIRECTORY  = os.environ['HOME']
+DEVICE_INDEX_NUMBER  = os.environ['DEVICE_INDEX_NUMBER']
+DEVICE_SERIAL_NUMBER = os.environ['DEVICE_INDEX_NUMBER']
+
 def execute_basic_camera_setup(camera):
     """
     """
@@ -47,33 +52,14 @@ def execute_basic_camera_setup(camera):
 
     return roi, framerate, exposure, binsize
 
-class TestVideoWriting(ut.TestCase):
-    """
-    """
-
-    def setUp(self):
-        self.filename = os.path.join(os.environ['HOME'], 'test.mp4')
-        self.shape = (100, 100)
-        self.framerate = 30
-        self.nframes = 3
-
-    def test_spinnaker_backend(self):
-        return
-
-    def test_ffmpeg_backend(self):
-        return
-
-    def test_opencv_backend(self):
-        return
-
-class TestCameraInstatiation(ut.TestCase):
+class TestCameraInitProcedure(ut.TestCase):
     """
     """
 
     def setUp(self):
         return
 
-    def test_camera_init_using_dummy_device(self):
+    def _test_camera_init_using_dummy_device(self):
         """
         """
 
@@ -85,13 +71,15 @@ class TestCameraInstatiation(ut.TestCase):
 
         return
 
-    def _test_camera_init_using_device_serialno(self, serialno=str(12345678)):
+    def test_camera_init_using_device_serialno(self):
         """
         """
 
         # force into a string
-        if not isinstance(serialno, str):
-            serialno = str(serialno)
+        if not isinstance(DEVICE_SERIAL_NUMBER, str):
+            serialno = str(DEVICE_SERIAL_NUMBER)
+        else:
+            serialno = DEVICE_SERIAL_NUMBER
 
         # instantiate the camera
         system = PySpin.System.GetInstance()

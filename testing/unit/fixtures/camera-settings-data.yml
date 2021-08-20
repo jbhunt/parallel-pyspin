@@ -1,0 +1,19 @@
+camera_serial_numbers:
+  - 19141017
+  - 19141009
+
+camera_settings_data:
+  framerate:
+    target: 30
+    tolerance: 0.5
+  exposure:
+    target: 3000
+    tolerance: 2
+  binsize:
+    target: 1
+  offset:
+    target: 0
+  height:
+    target: 720
+  width:
+    target: 540

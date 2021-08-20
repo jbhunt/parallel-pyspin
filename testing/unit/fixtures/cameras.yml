@@ -1,0 +1,11 @@
+camera_serial_numbers:
+  - 12345678
+  - 87654321
+
+testing_property_values:
+  framerate: 30
+  exposure: 5000
+  binsize: 1
+  offset: 0
+  height: 720
+  width: 540

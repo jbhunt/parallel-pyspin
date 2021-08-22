@@ -9,6 +9,7 @@ import multiprocessing as mp
 from datetime import datetime as dt
 
 # relative imports
+from .dummy import DummyCameraPointer
 from .processes import MainProcess, ChildProcess, CameraError, queued
 from .recording import FFmpegVideoWriter, SpinnakerVideoWriter, OpenCVVideoWriter, VideoWritingError
 from .secondary import SecondaryCamera
@@ -31,10 +32,10 @@ class PrimaryCameraChildProcess(ChildProcess):
 class PrimaryCamera(MainProcess):
     """
     """
-    def __init__(self, device: int=0, nickname: str=None):
+    def __init__(self, device: int=0, nickname: str=None, color: bool=False):
         """
         """
-        super().__init__(device, nickname)
+        super().__init__(device, nickname, color)
         self._spawn_child_process(PrimaryCameraChildProcess)
         self._primed = False
         return
@@ -100,28 +101,35 @@ class PrimaryCamera(MainProcess):
         #        output queue will cause the main process to hang.
         def f(child, camera, **kwargs):
 
+            #
+            if isinstance(camera, DummyCameraPointer):
+                dummy = True
+            else:
+                dummy = False
+
             try:
 
                 # initialize the video writer
                 if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
                     try:
-                        writer = FFmpegVideoWriter()
+                        writer = FFmpegVideoWriter(color=kwargs['color'])
                     except VideoWritingError:
                         return False, []
                 elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
                     try:
-                        writer = SpinnakerVideoWriter()
+                        writer = SpinnakerVideoWriter(color=kwargs['color'])
                     except:
                         return False, []
                 elif kwargs['backend'] in ['opencv', 'OpenCV']:
                     try:
-                        writer = OpenCVVideoWriter()
+                        writer = OpenCVVideoWriter(color=kwargs['color'])
                     except VideoWritingError:
                         return False, []
                 else:
                     return False, []
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
 
+                # list of timestamps
                 timestamps = list()
 
                 # wait for the trigger event
@@ -137,6 +145,8 @@ class PrimaryCamera(MainProcess):
                         pointer = camera.GetNextImage(kwargs['timeout'])
                         if pointer.IsIncomplete():
                             continue
+                        elif dummy:
+                            writer.write(pointer)
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
@@ -164,6 +174,8 @@ class PrimaryCamera(MainProcess):
                         pointer = camera.GetNextImage(kwargs['timeout'])
                         if pointer.IsIncomplete():
                             continue
+                        elif dummy:
+                            writer.write(pointer)
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
@@ -203,7 +215,8 @@ class PrimaryCamera(MainProcess):
             'framerate' : self.framerate,
             'bitrate'   : bitrate,
             'backend'   : backend,
-            'timeout'   : timeout
+            'timeout'   : timeout,
+            'color'     : self.color
         }
 
         # place the function in the input queue

@@ -4,16 +4,14 @@ import PySpin
 import numpy as np
 import pathlib as pl
 import unittest as ut
+from llpyspin.dummy import DummyCameraPointer
 
 # constants
-USER_HOME_PATH = os.environ['HOME']
+N_DUMMIES = 3
 
 camera_settings_filepath = str(pl.Path(__file__).parent.joinpath('fixtures/camera-settings-data.yml'))
 with open(camera_settings_filepath, 'r') as stream:
     camera_settings_data = yaml.load(stream, Loader=yaml.FullLoader)
-
-# serial numbers
-CAMERA_SERIAL_NUMBERS      = camera_settings_data['camera_serial_numbers']
 
 # target values for the acquisition properties
 CAMERA_FRAMERATE_TARGET    = camera_settings_data['camera_settings_data']['framerate']['target']
@@ -80,8 +78,9 @@ class TestBasicCameraSetup(ut.TestCase):
         """
         """
 
-        self.system = PySpin.System.GetInstance()
-        self.cameras = self.system.GetCameras()
+        self.cameras = [
+            DummyCameraPointer() for i in range(N_DUMMIES)
+        ]
 
         return
 
@@ -89,10 +88,9 @@ class TestBasicCameraSetup(ut.TestCase):
         """
         """
 
-        self.cameras.Clear()
-        del self.cameras
-        self.system.ReleaseInstance()
-        del self.system
+        for pointer in self.cameras:
+            pointer.DeInit()
+            del pointer
 
         return
 
@@ -100,8 +98,7 @@ class TestBasicCameraSetup(ut.TestCase):
         """
         """
 
-        for serialno in CAMERA_SERIAL_NUMBERS:
-            pointer = self.cameras.GetBySerial(str(serialno))
+        for pointer in self.cameras:
             result = pointer.IsValid()
             self.assertEqual(result, True)
             del pointer
@@ -164,10 +161,7 @@ class TestBasicCameraSetup(ut.TestCase):
         """
 
         # loop through each target serial number
-        for serialno in CAMERA_SERIAL_NUMBERS:
-
-            # instantiate the pointer
-            pointer = self.cameras.GetBySerial(str(serialno))
+        for pointer in self.cameras:
 
             # run the basic setup and get the results
             roi, framerate, exposure, binsize = setup_camera_pointer(pointer)

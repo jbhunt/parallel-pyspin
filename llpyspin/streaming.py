@@ -4,6 +4,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
+from .dummy import DummyCameraPointer
 from .processes  import MainProcess, ChildProcess, CameraError, queued
 
 #
@@ -30,11 +31,11 @@ class VideoStream(MainProcess):
     """
     """
 
-    def __init__(self, device=0):
+    def __init__(self, device=0, nickname: str=None, color: bool=False):
         """
         """
 
-        super().__init__(device)
+        super().__init__(device, nickname, color)
 
         self.open()
 
@@ -56,6 +57,12 @@ class VideoStream(MainProcess):
         #
         def f(child, camera, **kwargs):
 
+            #
+            if isinstance(camera, DummyCameraPointer):
+                dummy = True
+            else:
+                dummy = False
+
             try:
                 camera.BeginAcquisition()
 
@@ -76,7 +83,7 @@ class VideoStream(MainProcess):
                                     previous = child.buffer.get()
 
                                 # replace with the current image
-                                child.buffer.put(image.GetNDArray())
+                                child.buffer.put(image.GetNDArray().astype(np.uint8))
 
                     except PySpin.SpinnakerException:
                         continue

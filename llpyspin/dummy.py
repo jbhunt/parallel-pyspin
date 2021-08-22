@@ -54,12 +54,15 @@ class DummyProperty():
         if self.parent._initialized is False:
             raise PySpin.SpinnakerException('Camera is not initialized')
 
+    def GetAccessMode(self):
+        return PySpin.RW
+
 class DummyAcquisitionProcess(mp.Process):
     """
     Mimics image acquisition and buffering
     """
 
-    def __init__(self, buffersize=10, framerate=30, shape=(1280, 1440)):
+    def __init__(self, buffersize=10, framerate=30, shape=(1280, 1440), color=False):
         """
         """
 
@@ -68,6 +71,7 @@ class DummyAcquisitionProcess(mp.Process):
         self.framerate = framerate
         self.buffersize = buffersize
         self.width, self.height = shape
+        self.color = color
         self.buffer = mp.Queue()
         self.started = mp.Value('i', 0)
         self.paused = mp.Value('i', 0)
@@ -83,7 +87,11 @@ class DummyAcquisitionProcess(mp.Process):
     def run(self):
         while self.started.value:
             t0 = time.time()
-            image = np.random.randint(low=0, high=255, size=(self.height, self.width), dtype=np.uint8)
+            if self.color:
+                size = (self.height, self.width, 3)
+            else:
+                size = (self.height, self.width)
+            image = np.random.randint(low=0, high=255, size=size, dtype=np.uint8)
             while time.time() - t0 < (1 / self.framerate):
                 continue
             if self.buffer.qsize() < self.buffersize:
@@ -170,6 +178,9 @@ class DummyCameraPointer():
 
         return
 
+    def IsValid(self):
+        return True
+
     def Init(self):
         self._initialized = True
         return
@@ -194,7 +205,11 @@ class DummyCameraPointer():
             framerate = self.AcquisitionFrameRate.GetValue()
             shape = (self.Width.GetValue(), self.Height.GetValue())
             buffersize = self.TLStream.StreamBufferCountManual.GetValue()
-            self._p = DummyAcquisitionProcess(buffersize, framerate, shape)
+            if self.PixelFormat.GetValue() == PySpin.PixelFormat_Mono8:
+                color = False
+            else:
+                color = True
+            self._p = DummyAcquisitionProcess(buffersize, framerate, shape, color)
             self._p.start()
             self._streaming = True
 
@@ -217,7 +232,7 @@ class DummyCameraPointer():
 
         try:
             image = self._p.buffer.get(timeout=timeout / 1000000)
-            pointer = PySpin.Image_Create(self.Width.GetValue(), self.Height.GetValue(), 0, 0, PySpin.PixelFormat_Mono8, image)
+            pointer = PySpin.Image_Create(self.Width.GetValue(), self.Height.GetValue(), 0, 0, self.PixelFormat.GetValue(), image)
             return pointer
         except queue.Empty:
             raise PySpin.SpinnakerException('Image queury timed out') from None
@@ -229,12 +244,12 @@ class DummyCameraPointer():
         def SetValue(self, val):
             super().SetValue()
             if val == PySpin.TriggerMode_On:
-                if self._streaming:
-                  self._p.pause()
+                if self.parent._streaming:
+                  self.parent._p.pause()
                 self.val = val
             elif val ==  PySpin.TriggerMode_Off:
-                if self._streaming:
-                    self._p.unpause()
+                if self.parent._streaming:
+                    self.parent._p.unpause()
                 self.val = val
             else:
                 raise PySpin.SpinnakerException(f'{val} is an invalid value')
@@ -377,7 +392,7 @@ class DummyCameraPointer():
 
         def SetValue(self, val):
             super().SetValue()
-            if val not in [PySpin.PixelFormat_Mono8]:
+            if val not in [PySpin.PixelFormat_Mono8, PySpin.PixelFormat_RGB8]:
                 raise PySpin.SpinnakerException(f'{val} is not a valid pixel format')
             else:
                 self.val = val

@@ -4,6 +4,7 @@ import numpy as np
 import multiprocessing as mp
 
 # relative imports
+from .dummy import DummyCameraPointer
 from .processes import MainProcess, ChildProcess, CameraError, queued
 from .recording import FFmpegVideoWriter, SpinnakerVideoWriter, OpenCVVideoWriter, VideoWritingError
 
@@ -11,11 +12,11 @@ class SecondaryCamera(MainProcess):
     """
     """
 
-    def __init__(self, device: int=1):
+    def __init__(self, device: int=1, nickname: str=None, color: bool=False):
         """
         """
 
-        super().__init__(device)
+        super().__init__(device, nickname, color)
         self._spawn_child_process(ChildProcess)
         self._primed = False
 
@@ -50,19 +51,26 @@ class SecondaryCamera(MainProcess):
         def f(child, camera, **kwargs):
             try:
 
+                #
+                if isinstance(camera, DummyCameraPointer):
+                    dummy = True
+                else:
+                    dummy = False
+
+                #
                 if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
                     try:
-                        writer = FFmpegVideoWriter()
+                        writer = FFmpegVideoWriter(color=kwargs['color'])
                     except VideoWritingError:
                         return False, []
                 elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
                     try:
-                        writer = SpinnakerVideoWriter()
+                        writer = SpinnakerVideoWriter(color=kwargs['color'])
                     except:
                         return False, []
                 elif kwargs['backend'] in ['opencv', 'OpenCV']:
                     try:
-                        writer = OpenCVVideoWriter()
+                        writer = OpenCVVideoWriter(color=kwargs['color'])
                     except VideoWritingError:
                         return False, []
                 else:
@@ -98,6 +106,8 @@ class SecondaryCamera(MainProcess):
                         pointer = camera.GetNextImage(kwargs['timeout'])
                         if pointer.IsIncomplete():
                             continue
+                        elif dummy:
+                            writer.write(pointer)
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
@@ -122,6 +132,8 @@ class SecondaryCamera(MainProcess):
                         pointer = camera.GetNextImage(kwargs['timeout'])
                         if pointer.IsIncomplete():
                             continue
+                        elif dummy:
+                            writer.write(pointer)
                         else:
                             if len(timestamps) == 0:
                                 t0 = pointer.GetTimeStamp()
@@ -165,7 +177,8 @@ class SecondaryCamera(MainProcess):
             'framerate' : primary_camera_framerate,
             'bitrate'   : bitrate,
             'backend'   : backend,
-            'timeout'   : timeout
+            'timeout'   : timeout,
+            'color'     : self.color
         }
         item = (dill.dumps(f), kwargs)
         self._child.iq.put(item)

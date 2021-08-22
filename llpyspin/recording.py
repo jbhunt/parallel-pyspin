@@ -7,12 +7,59 @@ import pathlib as pl
 import subprocess as sp
 import multiprocessing as mp
 
-# try to import OpenCV
-try:
-    import cv2 as cv
-    OPENCV_IMPORT_RESULT = True
-except ModuleNotFoundError:
-    OPENCV_IMPORT_RESULT = False
+OPENCV_IMPORT_RESULT = False
+
+def import_opencv_module():
+    """
+    Import the OpenCV module
+    """
+
+    global OPENCV_IMPORT_RESULT
+
+    try:
+        global cv
+        import cv2 as cv
+        OPENCV_IMPORT_RESULT = True
+    except ModuleNotFoundError:
+        OPENCV_IMPORT_RESULT = False
+
+    return
+
+# call the function
+import_opencv_module()
+
+FFMPEG_BINARY_LOCATED = False
+FFMPEG_BINARY_FILEPATH = None
+
+def locate_ffmpeg_binary():
+    """
+    Locate the filepath to FFmpeg binary
+    """
+
+    global FFMPEG_BINARY_LOCATED
+    global FFMPEG_BINARY_FILEPATH
+
+    # check if ffmpeg is installed
+    if sys.platform == "linux" or platform == "linux2":
+        p = sp.Popen('which ffmpeg', stdout=sp.PIPE, shell=True)
+    elif sys.platform == "win32":
+        p = sp.Popen('where ffmpeg', stdout=sp.PIPE, shell=True)
+    else:
+        FFMPEG_BINARY_LOCATED = False
+        FFMPEG_BINARY_FILEPATH = None
+
+    out, err = p.communicate()
+    if p.returncode == 1:
+        FFMPEG_BINARY_LOCATED = True
+        FFMPEG_BINARY_FILEPATH = None
+    if p.returncode == 0:
+        FFMPEG_BINARY_LOCATED = True
+        FFMPEG_BINARY_FILEPATH = out.decode().rstrip('\n')
+
+    return
+
+# call the function
+locate_ffmpeg_binary()
 
 class VideoWritingError(Exception):
     def __init__(self, message):
@@ -22,7 +69,7 @@ class VideoWriterChildProcess(mp.Process):
     """
     """
 
-    def __init__(self, filename, shape=(1080, 1440), framerate=30):
+    def __init__(self, filename, shape=(1080, 1440), framerate=30, color=False):
         """
         """
 
@@ -40,6 +87,7 @@ class VideoWriterChildProcess(mp.Process):
         # video parameters
         self.height, self.width = shape
         self.framerate = framerate
+        self.color = color
 
         return
 
@@ -74,7 +122,7 @@ class OpenCVVideoWriterChildProcess(VideoWriterChildProcess):
             fourcc,
             self.framerate,
             (self.width, self.height),
-            False
+            self.color
         )
 
         # main loop
@@ -94,8 +142,8 @@ class SpinnakerVideoWriterChildProcess(VideoWriterChildProcess):
     """
     """
 
-    def __init__(self, filename, shape=(1080, 1440), framerate=30, bitrate=1000000):
-        super().__init__(filename, shape, framerate)
+    def __init__(self, filename, shape=(1080, 1440), framerate=30, color=False, bitrate=1000000):
+        super().__init__(filename, shape, framerate, color)
         self.bitrate = bitrate
 
     def run(self):
@@ -119,8 +167,12 @@ class SpinnakerVideoWriterChildProcess(VideoWriterChildProcess):
 
         while self.started.value:
             try:
-                image = self.q.get(timeout=False)
-                pointer = PySpin.Image_Create(self.width, self.height, 0, 0, PySpin.PixelFormat_Mono8, image)
+                image = self.q.get(block=False)
+                if self.color:
+                    format = PySpin.PixelFormat_RGB8
+                else:
+                    format = PySpin.PixelFormat_Mono8
+                pointer = PySpin.Image_Create(self.width, self.height, 0, 0, format, image)
                 writer.Append(pointer)
             except queue.Empty:
                 continue
@@ -132,6 +184,14 @@ class SpinnakerVideoWriterChildProcess(VideoWriterChildProcess):
 class FFmpegVideoWriterChildProcess(VideoWriterChildProcess):
 
     def run(self):
+
+        # define the pixel format
+        if self.color:
+            pixel_format = 'rgb8'
+        else:
+            pixel_format = 'gray'
+
+        # build a string of args for ffmpeg
         args = (
             'ffmpeg',
             '-y',
@@ -139,11 +199,8 @@ class FFmpegVideoWriterChildProcess(VideoWriterChildProcess):
             '-vcodec', 'rawvideo',
             '-s', f'{self.width}x{self.height}',
             '-r', f'{self.framerate}',
-            '-pix_fmt', 'rgb24',
+            '-pix_fmt', pixel_format,
             '-i', '-',
-            '-preset', 'veryslow',
-            '-pix_fmt', 'yuv420p',
-            '-filter:v', 'hue=s=0', # this is important - it converts the video to grayscale
             '-an',
             '-crf', '0',
             '-vcodec', 'libx264',
@@ -156,9 +213,7 @@ class FFmpegVideoWriterChildProcess(VideoWriterChildProcess):
         while self.started.value:
             try:
                 image = self.q.get(timeout=False)
-                if len(image.shape) != 3:
-                    image = np.stack((image,) * 3, axis=-1)
-                p.stdin.write(image)
+                p.stdin.write(image.tobytes())
             except queue.Empty:
                 continue
 
@@ -171,8 +226,9 @@ class VideoWriter():
     """
     """
 
-    def __init__(self):
+    def __init__(self, color=False):
         self.p = None
+        self.color = color
 
     def open(self, filename):
         if self.p is not None:
@@ -203,14 +259,14 @@ class VideoWriter():
 
         return
 
-    def write(self, pointer):
+    def write(self, pointer, dtype=np.uint8):
         if self.p is None:
             raise VideoWritingError('Video writer is closed')
         else:
             if isinstance(pointer, np.ndarray):
-                self.p.q.put(pointer)
+                self.p.q.put(pointer.astype(dtype))
             elif isinstance(pointer, PySpin.ImagePtr):
-                self.p.q.put(pointer.GetNDArray())
+                self.p.q.put(pointer.GetNDArray().astype(dtype))
             else:
                 raise VideoWritingError(f'Cannot write object of type {type(pointer)} to video file')
 
@@ -218,16 +274,16 @@ class OpenCVVideoWriter(VideoWriter):
     """
     """
 
-    def __init__(self):
+    def __init__(self, color=False):
         """
         """
-
-        super().__init__()
 
         # Raise an error if OpenCV is not installed
         global OPENCV_IMPORT_RESULT
-        if OPENCV_IMPORT_RESULT == False:
+        if OPENCV_IMPORT_RESULT is False:
             raise VideoWritingError('OpenCV import failed')
+
+        super().__init__(color)
 
         return
 
@@ -241,6 +297,7 @@ class OpenCVVideoWriter(VideoWriter):
             'filename': self.filename,
             'shape': shape,
             'framerate': framerate,
+            'color': self.color
         }
         self.p = OpenCVVideoWriterChildProcess(**kwargs)
         self.p.start()
@@ -251,11 +308,11 @@ class SpinnakerVideoWriter(VideoWriter):
     """
     """
 
-    def __init__(self):
+    def __init__(self, color=False):
         """
         """
 
-        super().__init__()
+        super().__init__(color)
 
         return
 
@@ -269,7 +326,8 @@ class SpinnakerVideoWriter(VideoWriter):
             'filename': self.filename,
             'shape': shape,
             'framerate': framerate,
-            'bitrate': bitrate
+            'bitrate': bitrate,
+            'color': self.color
         }
         self.p = SpinnakerVideoWriterChildProcess(**kwargs)
         self.p.start()
@@ -287,25 +345,19 @@ class FFmpegVideoWriter(VideoWriter):
     """
     """
 
-    def __init__(self, print_ffmpeg_path=False):
+    def __init__(self, color=False, print_ffmpeg_path=False):
         """
         """
 
-        super().__init__()
+        global FFMPEG_BINARY_LOCATED
+        global FFMPEG_BINARY_FILEPATH
 
-        # check if ffmpeg is installed
-        if sys.platform == "linux" or platform == "linux2":
-            p = sp.Popen('which ffmpeg', stdout=sp.PIPE, shell=True)
-        elif sys.platform == "win32":
-            p = sp.Popen('where ffmpeg', stdout=sp.PIPE, shell=True)
-        else:
-            raise VideoWritingError('Only Windows and Linux operating systems are supported')
+        if FFMPEG_BINARY_LOCATED is False:
+            raise VideoWritingError('Failed to locate FFmpeg binary')
+        elif FFMPEG_BINARY_LOCATED and print_ffmpeg_path:
+            print(f'FFmpeg binary located at: {FFMPEG_BINARY_FILEPATH}')
 
-        out, err = p.communicate()
-        if p.returncode == 1:
-            raise VideoWritingError('FFmpeg not installed (or binary not locatable)')
-        if p.returncode == 0 and print_ffmpeg_path:
-            print(f'FFmpeg executable found at {out.decode()}')
+        super().__init__(color)
 
         return
 
@@ -319,6 +371,7 @@ class FFmpegVideoWriter(VideoWriter):
             'filename': self.filename,
             'shape': shape,
             'framerate': framerate,
+            'color': self.color
         }
         self.p = FFmpegVideoWriterChildProcess(**kwargs)
         self.p.start()

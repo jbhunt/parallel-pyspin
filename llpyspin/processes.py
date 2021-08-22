@@ -91,6 +91,16 @@ class ChildProcess(mp.Process):
             system = PySpin.System.GetInstance()
             cameras = system.GetCameras()
 
+            # return if no cameras detected
+            # if len(cameras) == 0:
+            #     result = False
+            #     self.oq.put(result)
+            #     return
+
+            # loop through available cameras
+            for camera in cameras:
+                pass
+
             # instantiate the camera
             if type(self._device) == int:
                 camera = cameras.GetByIndex(self._device)
@@ -169,7 +179,7 @@ class MainProcess(object):
     """
     """
 
-    def __init__(self, device: int=0, nickname: str=None) -> None:
+    def __init__(self, device: int=0, nickname: str=None, color: bool=False) -> None:
         """
         """
 
@@ -195,6 +205,9 @@ class MainProcess(object):
             self._nickname = f'camera[{self.device}]'
         else:
             self._nickname = nickname
+
+        #
+        self._color = color
 
         return
 
@@ -228,9 +241,17 @@ class MainProcess(object):
                 #
                 camera.Init()
 
-                #
-                camera.PixelFormat.SetValue(PySpin.PixelFormat_Mono8)
+                # pixel format
+                if kwargs['color'] is True:
+                    format = PySpin.PixelFormat_RGB8
+                else:
+                    format = PySpin.PixelFormat_Mono8
+                camera.PixelFormat.SetValue(format)
+
+                # acquisition mode
                 camera.AcquisitionMode.SetValue(PySpin.AcquisitionMode_Continuous)
+
+                # buffer handling (default is newest only)
                 camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_NewestOnly)
 
                 # set the exposure
@@ -272,7 +293,8 @@ class MainProcess(object):
                 return False, None
 
         #
-        result, output = f(self, 'Failed to initialize camera')
+        result, output = f(self, 'Failed to initialize camera', color=self.color)
+
         self._framerate = output['framerate']
         self._exposure  = output['exposure']
         self._binsize   = output['binsize']
@@ -586,6 +608,11 @@ class MainProcess(object):
     @property
     def device(self):
         return self._device
+
+    # color flag
+    @property
+    def color(self):
+        return self._color
 
     # camera nickname
     @property

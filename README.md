@@ -19,11 +19,14 @@ cam1.release() # make sure to release the camera when you are done
 
 ## Adding one or more secondary cameras ##
 ```Python
-from llpysin import secondary
+from llpysin import primary, secondary
+cam1 = primary.PrimaryCamera(str(<serial number>))
+cam1.prime('<file path>.mp4')
 cam2 = secondary.SecondaryCamera(str(<serial number>))
 cam2.prime('<file path>.mp4', cam1.framerate) # The prime method requires the framerate of the primary camera as an argument
-cam1.prime('<file path>.mp4')
 cam1.trigger() # Triggering the primary camera will trigger the secondary camera
 timestamps1 = cam1.stop() # Always stop the primary camera before the secondary camera
 timestamps2 = cam2.stop()
+cam1.release()
+cam2.release()
 ```

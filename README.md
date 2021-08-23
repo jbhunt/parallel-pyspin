@@ -30,3 +30,15 @@ timestamps2 = cam2.stop()
 cam1.release()
 cam2.release()
 ```
+
+## Recording videos in color ##
+The default video format is grayscale encoded as an 8-bit unsigned integer; however, if you are using color image-capable cameras, you can produce color videos by setting the `color` keyword argument to `True` when you instantiate the camera objects.
+```Python
+cam1 = primary.PrimaryCamera(str(<serial number>), color=True) # very colorful, much wow
+```
+
+## Task list ##
+- [ ] Implement a periodic memory check which stops processes when the amount of available virtual memory exceeds a threshold
+- [ ] Check that the access mode for each modifiable property of the camera pointer object is readable and writeable
+- [ ] Write a unit test that tests each of the video writing backends
+- [ ] Make the camera objects accept serial numbers as integers

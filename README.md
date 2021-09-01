@@ -106,6 +106,10 @@ Calling the `read` method will return the result of the call and the image as a 
 ```Python
 result, image = cap.read()
 ```
+Make sure to close the stream when you are done.
+```Python
+stream.close()
+```
 
 # Task list #
 - [X] Make the camera objects accept serial numbers as integers

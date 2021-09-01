@@ -6,6 +6,15 @@ This package provides another layer of abstraction on top of the Python wrapper 
 
 For documentation of the installation procedure and basic usage please refer to the repository's [wiki](https://github.com/jbhunt/parallel-pyspin/wiki). For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
 
+# Installation #
+To install this package, clone the github repository and run the `setup.py` script
+```
+cd <wherever you want the repo to live>
+git clone https://github.com/jbhunt/parallel-pyspin.git
+cd ./parallel-pyspin
+python -m setup.py
+```
+
 # Basic usage #
 ### Creating an instance of a primary camera ###
 Cameras are represented as objects. Each camera object requires either a serial number or device index to be instantiated.
@@ -17,7 +26,7 @@ or
 ```Python
 cam1 = primary.PrimaryCamera(device_index=0)
 ```
-To prepare the camera object for video recording, you need to call the `prime` method which required the file path including the filename for the video container and an optional keyword argument: `backend` which specifies the video writing backend. Supported video writing backends are `Spinnaker`, `OpenCV`, and `FFmpeg`. If using the `OpenCV` or `FFmpeg` backends, you will need to install some additional dependencies.
+To prepare the camera object for video recording, you need to call the `prime` method which requires the file path including the filename for the video container and an optional keyword argument: `backend` which specifies the video writing backend. Supported video writing backends are `Spinnaker`, `OpenCV`, and `FFmpeg`. If using the `OpenCV` or `FFmpeg` backends, you will need to install some additional dependencies.
 ```Python
 cam1.prime('<file path>.mp4', backend='Spinnaker')
 ```

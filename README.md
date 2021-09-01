@@ -61,7 +61,7 @@ When stopping acquisition, always stop the primary camera before the secondary c
 timestamps1 = cam1.stop() # Always stop the primary camera before the secondary camera
 timestamps2 = cam2.stop()
 ```
-And make sure to clean up when you're done.
+And make sure to clean up when you're done (the order doesn't matter).
 ```Python
 cam1.release()
 cam2.release()
@@ -70,7 +70,30 @@ cam2.release()
 ### Recording videos in color ###
 The default video format is grayscale encoded as an 8-bit unsigned integer; however, if you are using color image-capable cameras, you can produce color videos by setting the `color` keyword argument to `True` when you instantiate the camera objects.
 ```Python
-cam1 = primary.PrimaryCamera(str(<serial number>), color=True) # very colorful, much wow
+cam1 = primary.PrimaryCamera(serial_number=12345678, color=True) # very colorful, much wow
+```
+You can also modify this property outside of video recordings by setting the value of the `color` property.
+```Python
+cam1.color = False # 8-bit grayscale
+cam1.color = True # 8-bit RGB
+```
+
+### Modifying acquisition properties ###
+There are 4 acquisition properties you can set: `framerate`, `exposure`, `binsize`, and `roi`. Each instance of a camera object possesses these 4 properties which are themselves instances of a Python descriptor meaning they have setter, getter, and deleter methods.
+```Python
+cam1.framerate # returns the default framerate of 30 fps
+cam1.framerate = 60 # invoke the setter method
+cam1.framerate # returns 60 now
+```
+These properties are somewhat intelligent in that they will raise an error if the target value of the property exceeds the capability of the camera.
+```Python
+cam1.framerate = 1000000 # This will raise an error
+```
+Lastly, acquisition properties cannot be set during video acquisition. If you try to do this (after calling the `prime` and `trigger` methods), you will get an error.
+```Python
+cam1.prime('<file path>')
+cam1.trigger()
+cam1.framerate = 60 # raises an error without interrupting acquisition
 ```
 
 # Task list #

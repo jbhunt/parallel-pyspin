@@ -7,7 +7,7 @@ This package provides another layer of abstraction on top of the Python wrapper 
 For documentation of the installation procedure and basic usage please refer to the repository's [wiki](https://github.com/jbhunt/parallel-pyspin/wiki). For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
 
 # Installation #
-To install this package, clone the github repository and run the `setup.py` script
+To install this package, clone the github repository and run the `setup.py` script.
 ```
 cd <wherever you want the repo to live>
 git clone https://github.com/jbhunt/parallel-pyspin.git
@@ -44,15 +44,25 @@ cam1.release() # make sure to release the camera when you are done
 ```
 
 ### Adding one or more secondary cameras ###
+The `SecondaryCamera` object is used to handle cameras which are triggered by a physical signal. This object operates almost exactly like the `PrimaryCamera` object with the exception that there is no `trigger` method. Calling the `prime` method will prompt the camera object to enter an acquisition loop which waits for images to enter the camera's image buffer.
 ```Python
 from llpysin import primary, secondary
-cam1 = primary.PrimaryCamera(str(<serial number>))
+cam1 = primary.PrimaryCamera(serial_number=12345678)
 cam1.prime('<file path>.mp4')
-cam2 = secondary.SecondaryCamera(str(<serial number>))
+cam2 = secondary.SecondaryCamera(str(serial_number=87654321)
+```
+Note that the `prime` method requires the framerate of the primary camera in frames per second as the second positional argument. This ensures the primary camera's framerate does not exceed what the secondary camera can achieve.
+```Python
 cam2.prime('<file path>.mp4', cam1.framerate) # The prime method requires the framerate of the primary camera as an argument
 cam1.trigger() # Triggering the primary camera will trigger the secondary camera
+```
+When stopping acquisition, always stop the primary camera before the secondary camera(s). This ensures that the primary camera does not record more images than the secondary camera(s).
+```Python
 timestamps1 = cam1.stop() # Always stop the primary camera before the secondary camera
 timestamps2 = cam2.stop()
+```
+And make sure to clean up when you're done.
+```Python
 cam1.release()
 cam2.release()
 ```

@@ -12,7 +12,7 @@ To install this package, clone the github repository and run the `setup.py` scri
 cd <wherever you want the repo to live>
 git clone https://github.com/jbhunt/parallel-pyspin.git
 cd ./parallel-pyspin
-python -m setup.py
+python setup.py install
 ```
 
 # Basic usage #

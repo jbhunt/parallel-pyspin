@@ -97,6 +97,10 @@ class VideoWriterChildProcess(mp.Process):
 
     def join(self, timeout=5):
         self.started.value = 0
+        while self.q.qsize() != 0:
+            discard = self.q.get()
+        self.q.close()
+        self.q.join_thread()
         super().join(timeout)
 
 class OpenCVVideoWriterChildProcess(VideoWriterChildProcess):
@@ -244,12 +248,13 @@ class VideoWriter():
         if not self.filename.is_absolute():
             self.filename = self.filename.absolute()
 
-    def close(self):
+    def close(self, timeout=5):
         if self.p is None:
             raise VideoWritingError('Video writer is already closed')
         else:
             try:
-                self.p.join(5)
+                # self.p.join_thread(timeout)
+                self.p.join(timeout)
                 self.p = None
             except mp.TimeoutError:
                 self.p.terminate()
@@ -339,7 +344,6 @@ class SpinnakerVideoWriter(VideoWriter):
         actual = f'{str(self.filename.name)}-0000.avi'
         src = str(self.filename.parent / pl.Path(actual))
         os.rename(src, str(self.filename))
-
 
 class FFmpegVideoWriter(VideoWriter):
     """

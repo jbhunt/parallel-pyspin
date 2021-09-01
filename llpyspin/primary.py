@@ -10,7 +10,7 @@ from datetime import datetime as dt
 
 # relative imports
 from .dummy import DummyCameraPointer
-from .processes import MainProcess, ChildProcess, CameraError, queued
+from .processes import MainProcess, ChildProcess, CameraError, queued, GETBY_DUMMY_CAMERA, GETBY_DEVICE_INDEX, GETBY_SERIAL_NUMBER
 from .recording import FFmpegVideoWriter, SpinnakerVideoWriter, OpenCVVideoWriter, VideoWritingError
 from .secondary import SecondaryCamera
 
@@ -18,24 +18,33 @@ class PrimaryCameraChildProcess(ChildProcess):
     """
     """
 
-    def __init__(self, device: int=0) -> None:
+    def __init__(self, value=0, getby=GETBY_DEVICE_INDEX) -> None:
         """
         """
 
         # acquisition trigger
         self.trigger = mp.Event()
 
-        super().__init__(device)
+        # init
+        super().__init__(value, getby)
 
         return
 
 class PrimaryCamera(MainProcess):
     """
     """
-    def __init__(self, device: int=0, nickname: str=None, color: bool=False):
+    def __init__(
+        self,
+        serial_number : int=None,
+        device_index  : int=None,
+        nickname      : str=None,
+        dummy         : bool=False,
+        color         : bool=False
+        ):
         """
         """
-        super().__init__(device, nickname, color)
+
+        super().__init__(serial_number, device_index, nickname, dummy, color)
         self._spawn_child_process(PrimaryCameraChildProcess)
         self._primed = False
         return
@@ -65,69 +74,77 @@ class PrimaryCamera(MainProcess):
         # set the buffer handling mode to oldest first (instead of newest only)
         # and increase the number of bufered images allowed in memory
         @queued
-        def f(child, camera, **kwargs):
+        def f(child, pointer, **kwargs):
             try:
-                camera.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
-                camera.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
-                camera.TLStream.StreamBufferCountManual.SetValue(camera.TLStream.StreamBufferCountManual.GetMax())
-                return True, None
+                pointer.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
+                pointer.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
+                pointer.TLStream.StreamBufferCountManual.SetValue(pointer.TLStream.StreamBufferCountManual.GetMax())
+                return True, None, None
             except PySpin.SpinnakerException:
-                return False, None
+                return False, None, f'Failed to set the stream buffer handling mode property'
 
         # call the function
-        result, output = f(self, 'Failed to set buffer mode')
+        result, output, message = f(main=self)
 
         # configure the camera to emit a digital signal
         @queued
-        def f(child, camera, **kwargs):
+        def f(child, pointer, **kwargs):
 
             try:
-                camera.LineSelector.SetValue(PySpin.LineSelector_Line1)
-                camera.LineSource.SetValue(PySpin.LineSource_ExposureActive)
-                camera.LineSelector.SetValue(PySpin.LineSelector_Line2)
-                camera.V3_3Enable.SetValue(True)
+                pointer.LineSelector.SetValue(PySpin.LineSelector_Line1)
+                pointer.LineSource.SetValue(PySpin.LineSource_ExposureActive)
+                pointer.LineSelector.SetValue(PySpin.LineSelector_Line2)
+                pointer.V3_3Enable.SetValue(True)
 
-                return True, None
+                return True, None, None
 
             except PySpin.SpinnakerException:
-                return False, None
+                return False, None, f'Failed to configure the trigger'
 
         # call the function
-        result, output = f(self, 'Trigger configuration failed')
+        result, output, message = f(main=self)
 
         # prime the camera for acquisition
         # NOTE - This is a special case in which the queued decorator won't
         #        work because trying to retrieve the result from the child's
         #        output queue will cause the main process to hang.
-        def f(child, camera, **kwargs):
+        def f(child, pointer, **kwargs):
 
             #
-            if isinstance(camera, DummyCameraPointer):
+            if isinstance(pointer, DummyCameraPointer):
                 dummy = True
             else:
                 dummy = False
 
+            # initialize the video writer (and send the result back to the main process)
             try:
-
-                # initialize the video writer
-                if kwargs['backend'] in ['ffmpeg', 'FFmpeg']:
-                    try:
-                        writer = FFmpegVideoWriter(color=kwargs['color'])
-                    except VideoWritingError:
-                        return False, []
-                elif kwargs['backend'] in ['spinnaker', 'Spinnaker', 'PySpin']:
-                    try:
-                        writer = SpinnakerVideoWriter(color=kwargs['color'])
-                    except:
-                        return False, []
-                elif kwargs['backend'] in ['opencv', 'OpenCV']:
-                    try:
-                        writer = OpenCVVideoWriter(color=kwargs['color'])
-                    except VideoWritingError:
-                        return False, []
+                backend = kwargs['backend']
+                if backend in ['ffmpeg', 'FFmpeg']:
+                    writer = FFmpegVideoWriter(color=kwargs['color'])
+                elif backend in ['spinnaker', 'Spinnaker', 'PySpin']:
+                    writer = SpinnakerVideoWriter(color=kwargs['color'])
+                elif backend in ['opencv', 'OpenCV', 'cv2']:
+                    writer = OpenCVVideoWriter(color=kwargs['color'])
                 else:
-                    return False, []
+                    item = (
+                        False, f'{backend} is not a valid video writing backend'
+                    )
+                    child.oq.put(item)
+                    return (None, None, None)
+
                 writer.open(kwargs['filename'], kwargs['shape'], kwargs['framerate'], kwargs['bitrate'])
+                item = (True, None)
+                child.oq.put(item)
+
+            except:
+                item = (
+                    False, f'Failed to open video writer (backend={backend})'
+                )
+                child.oq.put(item)
+                return (None, None, None)
+
+            # acquisition
+            try:
 
                 # list of timestamps
                 timestamps = list()
@@ -136,58 +153,58 @@ class PrimaryCamera(MainProcess):
                 child.trigger.wait()
 
                 # begin acquisition
-                camera.BeginAcquisition()
+                pointer.BeginAcquisition()
 
                 # main acquisition loop
                 while child.acquiring.value:
 
                     try:
-                        pointer = camera.GetNextImage(kwargs['timeout'])
-                        if pointer.IsIncomplete():
+                        image = pointer.GetNextImage(kwargs['timeout'])
+                        if image.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(pointer)
+                            writer.write(image)
                         else:
                             if len(timestamps) == 0:
-                                t0 = pointer.GetTimeStamp()
+                                t0 = image.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                tn = (image.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(pointer)
+                            writer.write(image)
 
                     except PySpin.SpinnakerException:
                         continue
 
                     # This will raise an error if using the dummy camera pointer
                     try:
-                        pointer.Release()
+                        image.Release()
                     except PySpin.SpinnakerException:
                         continue
 
                 # suspend image acquisition to empty out the device buffer
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_On)
+                pointer.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
                 # empty out the host computer's device buffer
                 while True:
                     try:
-                        pointer = camera.GetNextImage(kwargs['timeout'])
-                        if pointer.IsIncomplete():
+                        image = pointer.GetNextImage(kwargs['timeout'])
+                        if image.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(pointer)
+                            writer.write(image)
                         else:
                             if len(timestamps) == 0:
-                                t0 = pointer.GetTimeStamp()
+                                t0 = image.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                tn = (image.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(pointer)
+                            writer.write(image)
 
                         # This will raise an error if using the dummy camera pointer
                         try:
-                            pointer.Release()
+                            image.Release()
                         except PySpin.SpinnakerException:
                             continue
 
@@ -195,18 +212,21 @@ class PrimaryCamera(MainProcess):
                         break
 
                 # stop acquisition immediately
-                camera.EndAcquisition()
+                pointer.EndAcquisition()
 
                 # turn the trigger mode back off
-                camera.TriggerMode.SetValue(PySpin.TriggerMode_Off)
+                pointer.TriggerMode.SetValue(PySpin.TriggerMode_Off)
 
                 #
-                writer.close()
+                try:
+                    writer.close()
+                except:
+                    return False, timestamps, f'Failed to close video writer (backend={backend})'
 
-                return True, timestamps
+                return True, timestamps, None
 
-            except (PySpin.SpinnakerException, Exception):
-                return False, None
+            except PySpin.SpinnakerException:
+                return False, None, f'Video acquisition failed'
 
         # kwargs for configuring up the video writing
         kwargs = {
@@ -222,6 +242,12 @@ class PrimaryCamera(MainProcess):
         # place the function in the input queue
         item = (dill.dumps(f), kwargs)
         self._child.iq.put(item)
+
+        # check that the video writing setup was successful
+        result, message = self._child.oq.get()
+        if result == False:
+            self._child.oq.get() # empty out the output queue
+            raise CameraError(message)
 
         #
         self._primed = True
@@ -258,10 +284,13 @@ class PrimaryCamera(MainProcess):
 
         # release the trigger (in the case of abortion before the trigger method is called)
         if not self._child.trigger.is_set():
+            # TODO: Delete the video recording for an aborted acquisition run
             self._child.trigger.set()
 
         # retrieve the result of video acquisition from the child's output queue
-        result, timestamps = self._child.oq.get()
+        result, timestamps, message = self._child.oq.get()
+        if result == False:
+            raise CameraError(message)
 
         # reset the primed and locked flags
         self._primed = False

@@ -3,6 +3,7 @@ import queue
 import PySpin
 import numpy as np
 import multiprocessing as mp
+from scipy.ndimage import gaussian_filter as gaussian
 
 _PROPERTIES = {
     'FRAMERATE': {
@@ -86,16 +87,26 @@ class DummyAcquisitionProcess(mp.Process):
 
     def run(self):
         while self.started.value:
+
+            #
             t0 = time.time()
+
+            # generate noise
             if self.color:
                 size = (self.height, self.width, 3)
             else:
                 size = (self.height, self.width)
             image = np.random.randint(low=0, high=255, size=size, dtype=np.uint8)
+
+            # Wait for the appropriate inter-frame interval to lapse
             while time.time() - t0 < (1 / self.framerate):
                 continue
+
+            # Queue image
             if self.buffer.qsize() < self.buffersize:
                 self.buffer.put(image)
+
+            # Wait here if paused
             while self.paused.value:
                 continue
 
@@ -111,25 +122,21 @@ class DummyAcquisitionProcess(mp.Process):
 
     def stop(self):
         """Stop acquisition"""
+
+        # exit from the main acquisition loop
         self.started.value = 0
-
-    def join(self, timeout=1):
-        """Join the process"""
-
-        # exit from the main loop
-        if self.started.value:
-            self.started.value = 0
 
         # unpause if paused
         if self.paused.value:
             self.paused.value = 0
 
-        # empty out the buffer
+        # flush the buffer
         while self.buffer.qsize() != 0:
-            self.buffer.get()
+            discard = self.buffer.get()
+        self.buffer.close()
+        self.buffer.join_thread()
 
-        # join
-        super().join(timeout)
+        return
 
 class DummyCameraPointer():
     """
@@ -200,8 +207,14 @@ class DummyCameraPointer():
             raise PySpin.SpinnakerException('Camera is not initialized')
         else:
             if self._p is not None:
-                self._p.join()
-                self._p = None
+                try:
+                    self._p.stop()
+                    self._p.join(1)
+                    self._p = None
+                except mp.TimeoutError:
+                    self._p.terminate()
+                    self._p = None
+                    raise PySpin.SpinnakerException('Dummy acquisition process dead-locked') from None
             framerate = self.AcquisitionFrameRate.GetValue()
             shape = (self.Width.GetValue(), self.Height.GetValue())
             buffersize = self.TLStream.StreamBufferCountManual.GetValue()
@@ -218,8 +231,14 @@ class DummyCameraPointer():
             raise PySpin.SpinnakerException('Camera is not initialized')
         else:
             if self._p is not None:
-                self._p.join()
-                self._p = None
+                try:
+                    self._p.stop()
+                    self._p.join(1)
+                    self._p = None
+                except mp.TimeoutError:
+                    self._p.terminate()
+                    self._p = None
+                    raise PySpin.SpinnakerException('Dummy acquisition process dead-locked') from None
             self._streaming = False
 
     def GetNextImage(self, timeout=100):
@@ -344,7 +363,7 @@ class DummyCameraPointer():
 
         def SetValue(self, val):
             super().SetValue()
-            if self.min <= val <= self.max and val in [1, 2, 3]:
+            if self.min <= val <= self.max and val in [1, 2, 4]:
                 self.val = val
                 width = int(self.parent.Width._ceiling / val)
                 self.parent.Width.max = width

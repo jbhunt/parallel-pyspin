@@ -96,6 +96,17 @@ cam1.trigger()
 cam1.framerate = 60 # raises an error without interrupting acquisition
 ```
 
+### Streaming video ###
+In case you would prefer to stream video instead of creating video recordings (e.g., for real-time applications) use the `VideoStream` object. This object operates a lot like OpenCV's `VideoCapture` object if you are familiar with it. Instead of buffering as many images as possible and writing them to a video container, the `VideoStream` object holds only a single image in memory at any given time. This image is updated as fast as possible (or more accurately at the camera's framerate).
+```Python
+from llpyspin import streaming
+cap = streaming.VideoStream(serial_number=12345678)
+```
+Calling the `read` method will return the result of the call and the image as a Numpy array.
+```Python
+result, image = cap.read()
+```
+
 # Task list #
 - [X] Make the camera objects accept serial numbers as integers
 - [X] Send error messages back through the child proccess' queue

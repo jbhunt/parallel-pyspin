@@ -7,6 +7,7 @@ This package provides another layer of abstraction on top of the Python wrapper 
 For documentation of the installation procedure and basic usage please refer to the repository's [wiki](https://github.com/jbhunt/parallel-pyspin/wiki). For questions or general correspondence please send an email to hunt.brian.joshua@gmail.com.
 
 # Installation #
+### Installing parallel-pyspin ###
 To install this package, clone the github repository and run the `setup.py` script.
 ```
 cd <wherever you want the repo to live>
@@ -14,6 +15,39 @@ git clone https://github.com/jbhunt/parallel-pyspin.git
 cd ./parallel-pyspin
 python setup.py install
 ```
+
+### Installing the Spinnaker SDK and PySpin ###
+This package depends on the Spinnaker SDK and its Python wrapper - PySpin. You will need to manually install this dependency (sorry, there's no way to automate it).
+
+### Method 1 ###
+You can follow the procedure for installation provided by FLIR. Take a look [here](https://www.flir.com/products/spinnaker-sdk). If you are using an operating system other than Ubuntu 18.04 this is the recommended approach.
+
+### Method 2 ###
+Alternatively, if you are using Ubuntu 18.04, I created a script that takes care of the installation for you. Follow these steps:
+
+1. There's a folder which contains some libraries, a list of dependencies, the PySpin Wheel, and an installation script [here](https://github.com/jbhunt/parallel-pyspin/tree/master/spinnaker). To download this folder you can either clone the whole github repository (including this folder): `git clone https://github.com/jbhunt/parallel-pyspin/`, or you can use subversion to download just this folder and its contents: `svn checkout https://github.com/jbhunt/parallel-pyspin/trunk/spinnaker`. If you don't already have subversion installed you can install it like this: `sudo apt-get install subversion`.
+
+2. Part of the installation procedure is increasing the memory limit for USB device buffers. By default Ubuntu caps USB device buffers at 16 MB ([source](https://www.flir.com/support-center/iis/machine-vision/application-note/understanding-usbfs-on-linux)). The USB device buffer size limit is increased to prevent dropped frames when recording with multiple cameras at high framerates and large image sizes. To permanently modify the limit on USB device buffers use the `--increase-memory-limit` flag and specify the new buffer size with the `--memory-limit` argument: `sudo python -m ./spinnaker/install.py --increase-memory-limit --memory-limit 1200`.
+
+This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README) as well as the installation of the PySpin Wheel. There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
+
+## Installing FFmpeg (optional) ##
+You need to install FFmpeg if you'd like to use it as the backend for video writing. Using FFmpeg to write the videos can help prevent dropping frames at high framerates because the FFmpeg video writing backend is parallelized; whereas, the Spinnaker SDK video writing backend is not. If you are using Ubuntu (Linux), you can simply install it with apt:
+
+1. `sudo apt install ffmpeg`
+
+If you are using Windows, you'll need to install it yourself and verify that the installation was successful. This is the basic installation procedure:
+
+1. Download the zip file from their website [here](https://www.ffmpeg.org/download.html).
+2. Extract the zip file and move it to wherever you would like it to live and rename it `ffmpeg`. I recommend moving it to the root of the C:\ drive.
+3. Append `<path to install>\ffmpeg\bin` to the `PATH` environmental variable.
+
+[Here](https://www.wikihow.com/Install-FFmpeg-on-Windows) is also a simple tutorial on how to do this step-by-step.
+
+## Installing opencv-python (optional) ##
+You need to install the Python wrapper for OpenCV if you want to use OpenCV for the video writing backend. Similar to the FFmpeg video writing backend, the OpenCV backend is parallelized to offload the video writing operation to a separate process. To install this package:
+
+1. pip install opencv-python
 
 # Basic usage #
 ### Creating an instance of a primary camera ###

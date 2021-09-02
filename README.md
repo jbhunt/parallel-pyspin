@@ -79,11 +79,16 @@ cam1.color = True # 8-bit RGB
 ```
 
 ### Modifying acquisition properties ###
-There are 4 acquisition properties you can set: `framerate`, `exposure`, `binsize`, and `roi`. Each instance of a camera object possesses these 4 properties which are themselves instances of a Python descriptor meaning they have setter, getter, and deleter methods.
+There are 4 acquisition properties you can modify:
+1. `framerate`: Camera framerate in frames per second
+2. `exposure`: Camera exposure time in microseconds
+3. `binsize`: A tuple (or integer) which specifies horizontal and vertical binning in pixels
+4. `roi`: A tuple which defines a rectangular region of interest (x offset, y offset, width, height) in pixels
+When you instantiate a camera object, these properties are assigned default values. You can change the value of a given property by invoking the setter method.
 ```Python
-cam1.framerate # returns the default framerate of 30 fps
-cam1.framerate = 60 # invoke the setter method
-cam1.framerate # returns 60 now
+cam1.framerate # Returns the default framerate (30 fps)
+cam1.framerate = 60 # Invoke the setter method
+cam1.framerate # Returns 60 now (if the call was successful)
 ```
 These properties are somewhat intelligent in that they will raise an error if the target value of the property exceeds the capability of the camera.
 ```Python
@@ -93,11 +98,11 @@ Lastly, acquisition properties cannot be set during video acquisition. If you tr
 ```Python
 cam1.prime('<file path>')
 cam1.trigger()
-cam1.framerate = 60 # raises an error without interrupting acquisition
+cam1.framerate = 60 # Raises an error without interrupting acquisition
 ```
 
 ### Streaming video ###
-In case you would prefer to stream video instead of creating video recordings (e.g., for real-time applications) use the `VideoStream` object. This object operates a lot like OpenCV's `VideoCapture` object if you are familiar with it. Instead of buffering as many images as possible and writing them to a video container, the `VideoStream` object holds only a single image in memory at any given time. This image is updated as fast as possible (or more accurately at the camera's framerate).
+In case you prefer to stream video instead of creating video recordings (useful for real-time applications), use the `VideoStream` object. This object operates a lot like OpenCV's `VideoCapture` object if you are familiar with it. Instead of buffering as many images as possible and writing them to a video container, the `VideoStream` object holds only a single image in memory at any given time. This image is updated as fast as possible (or more accurately at the camera's framerate).
 ```Python
 from llpyspin import streaming
 cap = streaming.VideoStream(serial_number=12345678)
@@ -110,6 +115,13 @@ Make sure to close the stream when you are done.
 ```Python
 stream.close()
 ```
+
+### Dummy camera ###
+Testing without access to a physical device can be accomplished by running a camera object in a dummy mode.
+```Python
+dummy = primary.PrimaryCamera(dummy=True)
+```
+This dummy camera object operates exactly like an actual camera object including being able to record videos (of a sequence of noisy images).
 
 # Task list #
 - [X] Make the camera objects accept serial numbers as integers

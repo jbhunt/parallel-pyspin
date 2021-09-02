@@ -117,7 +117,7 @@ stream.close()
 ```
 
 ### Dummy camera ###
-Testing without access to a physical device can be accomplished by running a camera object in a dummy mode.
+Testing without access to a physical device can be accomplished by using the `dummy` keyword argument.
 ```Python
 dummy = primary.PrimaryCamera(dummy=True)
 ```

@@ -98,6 +98,13 @@ class ChildProcess(mp.Process):
 
         self.started.value = 0
 
+        # flush the IO queues
+        for q in [self.iq, self.oq]
+            while q.qsize() != 0:
+                discard = self.iq.get()
+            q.close()
+            q.join_thread()
+
         super().join(timeout)
 
         return
@@ -154,13 +161,6 @@ class ChildProcess(mp.Process):
 
         # cleanup
         _cleanup(system, cameras, pointer)
-
-        # flush the IO queues
-        for q in [self.iq, self.oq]
-            while q.qsize() != 0:
-                discard = self.iq.get()
-            q.close()
-            q.join_thread()
 
         return
 

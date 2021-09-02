@@ -32,22 +32,33 @@ Alternatively, if you are using Ubuntu 18.04, I created a script that takes care
 This script takes care of steps 1-3 of the procedures for installation outlined in the Spinnaker [README](https://github.com/jbhunt/parallel-pyspin/blob/master/spinnaker/README) as well as the installation of the PySpin Wheel. There are additional steps that you might need to complete if you are using a GigE camera or if you'd like to use the SpinView GUI.
 
 ### Installing FFmpeg (optional) ###
-You need to install FFmpeg if you'd like to use it as the backend for video writing. Using FFmpeg to write the videos can help prevent dropping frames at high framerates because the FFmpeg video writing backend is parallelized; whereas, the Spinnaker SDK video writing backend is not. If you are using Ubuntu (Linux), you can simply install it with apt:
-
+You need to install FFmpeg if you'd like to use it as the backend for video writing.
 1. `sudo apt install ffmpeg`
 
 If you are using Windows, you'll need to install it yourself and verify that the installation was successful. This is the basic installation procedure:
-
 1. Download the zip file from their website [here](https://www.ffmpeg.org/download.html).
 2. Extract the zip file and move it to wherever you would like it to live and rename it `ffmpeg`. I recommend moving it to the root of the C:\ drive.
 3. Append `<path to install>\ffmpeg\bin` to the `PATH` environmental variable.
 
 [Here](https://www.wikihow.com/Install-FFmpeg-on-Windows) is also a simple tutorial on how to do this step-by-step.
 
-### Installing opencv-python (optional) ###
-You need to install the Python wrapper for OpenCV if you want to use OpenCV for the video writing backend. Similar to the FFmpeg video writing backend, the OpenCV backend is parallelized to offload the video writing operation to a separate process. To install this package:
+You can verify the installation was successful by checking the `FFMPEG_BINARY_LOCATED` flag in the `recording` module
+```Python
+from llpyspin import recording
+recording.FFMPEG_BINARY_LOCATED # Returns True or False depending on the result of the installation
+recording.FFMPEG_BINARY_FILEPATH # Returns the location of the FFmpeg binary if it was located
+```
 
+### Installing opencv-python (optional) ###
+You need to install the Python wrapper for OpenCV if you want to use OpenCV for the video writing backend.
 1. pip install opencv-python
+
+You can verify the installation was successful by checking the `OPENCV_IMPORT_RESULT` flag in the `recording` module
+```Python
+from llpyspin import recording
+recording.OPENCV_IMPORT_RESULT # This will return True or False depending on the result of the installation
+```
+
 
 # Basic usage #
 ### Creating an instance of a primary camera ###

@@ -84,6 +84,7 @@ There are 4 acquisition properties you can modify:
 2. `exposure`: Camera exposure time in microseconds
 3. `binsize`: A tuple (or integer) which specifies horizontal and vertical binning in pixels
 4. `roi`: A tuple which defines a rectangular region of interest (x offset, y offset, width, height) in pixels
+
 When you instantiate a camera object, these properties are assigned default values. You can change the value of a given property by invoking the setter method.
 ```Python
 cam1.framerate # Returns the default framerate (30 fps)

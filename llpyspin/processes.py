@@ -10,6 +10,11 @@ GETBY_DUMMY_CAMERA  = 0
 GETBY_SERIAL_NUMBER = 1
 GETBY_DEVICE_INDEX  = 2
 
+class CameraError(Exception):
+    """"""
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
 def queued(f):
     """
     This decorator sends functions through the input queue and retrieves the
@@ -33,29 +38,6 @@ def queued(f):
             return result, output, message
 
     return wrapped
-
-class CameraError(Exception):
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-def _cleanup(system, cameras, pointer=None):
-    """
-    Remove references to PySpin objects
-    """
-
-    if pointer is not None:
-        if pointer.IsStreaming():
-            pointer.EndAcquisition()
-        if pointer.IsInitialized():
-            pointer.DeInit()
-        del pointer
-
-    cameras.Clear()
-    del cameras
-    system.ReleaseInstance()
-    del system
-
-    return
 
 class ChildProcess(mp.Process):
     """
@@ -98,10 +80,13 @@ class ChildProcess(mp.Process):
 
         self.started.value = 0
 
+        # wait for main loop to exit
+        result = self.oq.get()
+
         # flush the IO queues
         for q in [self.iq, self.oq]:
             while q.qsize() != 0:
-                discard = self.iq.get()
+                discard = q.get()
             q.close()
             q.join_thread()
 
@@ -134,7 +119,11 @@ class ChildProcess(mp.Process):
         except PySpin.SpinnakerException:
 
             # cleanup
-            _cleanup(system, cameras, pointer)
+            if pointer is not None:
+                del pointer
+
+            cameras.Clear()
+            system.ReleaseInstance()
 
             # reset the started flag
             self.started.value = 0
@@ -159,8 +148,17 @@ class ChildProcess(mp.Process):
             except queue.Empty:
                 continue
 
-        # cleanup
-        _cleanup(system, cameras, pointer)
+        # cleanup and emit signal
+        try:
+            if pointer.IsInitialized():
+                pointer.DeInit()
+            del pointer
+            cameras.Clear()
+            system.ReleaseInstance()
+            self.oq.put(True)
+
+        except PySpin.SpinnakerException:
+            self.oq.put(False)
 
         return
 

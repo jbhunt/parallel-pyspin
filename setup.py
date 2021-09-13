@@ -21,5 +21,5 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     install_requires=dependencies,
-    include_package_date=True,
+    include_package_data=True,
 )

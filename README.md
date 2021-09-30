@@ -175,3 +175,5 @@ This dummy camera object operates exactly like an actual camera object including
 - [ ] Implement a periodic memory check which stops processes when the amount of available virtual memory exceeds a threshold
 - [ ] Check that the access mode for each modifiable property of the camera pointer object is readable and writeable
 - [ ] Write a unit test that tests each of the video writing backends
+- [ ] Implement a shared memory flag which makes sure the secondary cameras acquire exactly the same number of frames as the primary camera
+- [ ] Create a 'system' object which makes working with multiple cameras more user friendly

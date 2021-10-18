@@ -10,6 +10,8 @@ GETBY_DUMMY_CAMERA  = 0
 GETBY_SERIAL_NUMBER = 1
 GETBY_DEVICE_INDEX  = 2
 
+SHARED_FRAME_COUNTER = mp.Value('i', 0)
+
 class CameraError(Exception):
     """"""
     def __init__(self, message: str) -> None:
@@ -59,6 +61,10 @@ class ChildProcess(mp.Process):
         # Shared memory flags
         self.started   = mp.Value('i', 0)
         self.acquiring = mp.Value('i', 0)
+
+        #
+        global SHARED_FRAME_COUNTER
+        self.shared_frame_counter = SHARED_FRAME_COUNTER
 
         return
 

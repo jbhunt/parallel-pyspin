@@ -71,6 +71,10 @@ class PrimaryCamera(MainProcess):
         if self._child.trigger.is_set():
             self._child.trigger.clear()
 
+        # Reset the frame counter
+        if self._child.shared_frame_counter.value!= 0:
+            self._child.shared_frame_counter.value = 0
+
         # set the buffer handling mode to oldest first (instead of newest only)
         # and increase the number of bufered images allowed in memory
         @queued
@@ -159,54 +163,57 @@ class PrimaryCamera(MainProcess):
                 while child.acquiring.value:
 
                     try:
-                        image = pointer.GetNextImage(kwargs['timeout'])
-                        if image.IsIncomplete():
+
+                        # Grab the next frame from the buffer
+                        frame = pointer.GetNextImage(kwargs['timeout'])
+
+                        # Increment the shared frame counter
+                        child.shared_frame_counter.value += 1
+
+                        # Write the frame to the video container
+                        if frame.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(image)
+                            writer.write(frame)
                         else:
                             if len(timestamps) == 0:
-                                t0 = image.GetTimeStamp()
+                                t0 = frame.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (image.GetTimeStamp() - t0) / 1000000
+                                tn = (frame.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(image)
+                            writer.write(frame)
+                            frame.Release()
 
                     except PySpin.SpinnakerException:
                         continue
 
-                    # This will raise an error if using the dummy camera pointer
-                    try:
-                        image.Release()
-                    except PySpin.SpinnakerException:
-                        continue
-
-                # suspend image acquisition to empty out the device buffer
+                # Suspend image acquisition to empty out the device buffer
                 pointer.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-                # empty out the host computer's device buffer
+                # Empty out the host computer's device buffer
                 while True:
                     try:
-                        image = pointer.GetNextImage(kwargs['timeout'])
-                        if image.IsIncomplete():
+
+                        # Grab the next frame from the buffer
+                        frame = pointer.GetNextImage(kwargs['timeout'])
+
+                        # Increment the shared frame counter
+                        child.shared_frame_counter.value += 1
+
+                        if frame.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(image)
+                            writer.write(frame)
                         else:
                             if len(timestamps) == 0:
-                                t0 = image.GetTimeStamp()
+                                t0 = frame.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (image.GetTimeStamp() - t0) / 1000000
+                                tn = (frame.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(image)
-
-                        # This will raise an error if using the dummy camera pointer
-                        try:
-                            image.Release()
-                        except PySpin.SpinnakerException:
-                            continue
+                            writer.write(frame)
+                            frame.Release()
 
                     except PySpin.SpinnakerException:
                         break

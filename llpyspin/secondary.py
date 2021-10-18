@@ -107,59 +107,67 @@ class SecondaryCamera(MainProcess):
                 # begin acquisition
                 pointer.BeginAcquisition()
 
+                # Counts the number of frames in the secondary camera's video recording
+                local_frame_counter = 0
+
                 # main loop
                 while child.acquiring.value:
+
+                    # Wait for the primary camera to begin acquisition of the next frame
+                    if local_frame_counter >= child.shared_frame_counter.value:
+                        continue
 
                     # There's a 1 ms timeout for the call to GetNextImage to prevent
                     # the secondary camera from blocking when video acquisition is
                     # aborted before the primary camera is triggered (see below).
 
                     try:
-                        pointer = pointer.GetNextImage(kwargs['timeout'])
-                        if pointer.IsIncomplete():
+                        frame = pointer.GetNextImage(kwargs['timeout'])
+                        if frame.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(pointer)
+                            writer.write(frame)
                         else:
                             if len(timestamps) == 0:
-                                t0 = pointer.GetTimeStamp()
+                                t0 = frame.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                tn = (frame.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(pointer)
+                            writer.write(frame)
+                            frame.Release()
 
-                        # This will raise an error if using the dummy camera pointer
-                        try:
-                            pointer.Release()
-                        except PySpin.SpinnakerException:
-                            continue
+                        # Increment the local frame counter
+                        local_frame_counter += 1
 
                     except PySpin.SpinnakerException:
                         continue
 
-                # empty out the computer's device buffer
+                # Empty out the computer's device buffer
                 while True:
+
+                    # Exit the loop if the counters are equal
+                    if local_frame_counter >= child.shared_frame_counter.value:
+                        break
+
                     try:
-                        pointer = pointer.GetNextImage(kwargs['timeout'])
-                        if pointer.IsIncomplete():
+                        frame = pointer.GetNextImage(kwargs['timeout'])
+                        if frame.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(pointer)
+                            writer.write(frame)
                         else:
                             if len(timestamps) == 0:
-                                t0 = pointer.GetTimeStamp()
+                                t0 = frame.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (pointer.GetTimeStamp() - t0) / 1000000
+                                tn = (frame.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(pointer)
+                            writer.write(frame)
+                            frame.Release()
 
-                        # This will raise an error if using the dummy camera pointer
-                        try:
-                            pointer.Release()
-                        except PySpin.SpinnakerException:
-                            continue
+                        # Increment the local frame counter
+                        local_frame_counter += 1
 
                     except PySpin.SpinnakerException:
                         break

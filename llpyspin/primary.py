@@ -72,7 +72,7 @@ class PrimaryCamera(MainProcess):
             self._child.trigger.clear()
 
         # Reset the frame counter
-        if self._child.shared_frame_counter.value!= 0:
+        if self._child.shared_frame_counter.value != 0:
             self._child.shared_frame_counter.value = 0
 
         # set the buffer handling mode to oldest first (instead of newest only)
@@ -232,7 +232,8 @@ class PrimaryCamera(MainProcess):
 
                 return True, timestamps, None
 
-            except PySpin.SpinnakerException:
+            except PySpin.SpinnakerException as e:
+                print(e)
                 return False, None, f'Video acquisition failed'
 
         # kwargs for configuring up the video writing

@@ -29,7 +29,8 @@ class SecondaryCamera(MainProcess):
 
         return
 
-    def prime(self,
+    def prime(
+        self,
         filename,
         primary_camera_framerate,
         bitrate=1000000,
@@ -57,17 +58,17 @@ class SecondaryCamera(MainProcess):
 
         def f(child, pointer, **kwargs):
 
-            # dummy flag
+            # Set the dummy flag
             dummy = True if isinstance(pointer, DummyCameraPointer) else False
 
-            # initialize the video writer (and send the result back to the main process)
+            # Initialize the video writer (and send the result back to the main process)
             try:
                 backend = kwargs['backend']
                 if backend in ['ffmpeg', 'FFmpeg']:
                     writer = FFmpegVideoWriter(color=kwargs['color'])
-                elif backend in ['spinnaker', 'Spinnaker', 'PySpin']:
+                elif backend in ['spinnaker', 'Spinnaker', 'PySpin', 'pyspin']:
                     writer = SpinnakerVideoWriter(color=kwargs['color'])
-                elif backend in ['opencv', 'OpenCV', 'cv2']:
+                elif backend in ['opencv', 'OpenCV', 'cv2', 'cv']:
                     writer = OpenCVVideoWriter(color=kwargs['color'])
                 else:
                     item = (

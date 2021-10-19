@@ -6,10 +6,12 @@ import numpy as np
 import multiprocessing as mp
 from .dummy import DummyCameraPointer
 
+# Method for identifying camera devices
 GETBY_DUMMY_CAMERA  = 0
 GETBY_SERIAL_NUMBER = 1
 GETBY_DEVICE_INDEX  = 2
 
+# Shared frame counter (to keep primary and secondary cameras grossly in sync)
 SHARED_FRAME_COUNTER = mp.Value('i', 0)
 
 class CameraError(Exception):
@@ -76,27 +78,6 @@ class ChildProcess(mp.Process):
         self.started.value = 1
 
         super().start()
-
-        return
-
-    def join(self, timeout: float=5.0) -> None:
-        """
-        Override the join method
-        """
-
-        self.started.value = 0
-
-        # wait for main loop to exit
-        result = self.oq.get()
-
-        # flush the IO queues
-        for q in [self.iq, self.oq]:
-            while q.qsize() != 0:
-                discard = q.get()
-            q.close()
-            q.join_thread()
-
-        super().join(timeout)
 
         return
 
@@ -369,7 +350,7 @@ class MainProcess():
         if self._child is None:
             raise CameraError('No active child process')
 
-        if not self._child.started.value:
+        if self._child.started.value != 1:
             raise CameraError('Child process is inactive')
 
         @queued
@@ -383,18 +364,33 @@ class MainProcess():
             except PySpin.SpinnakerException:
                 return False, None, 'Failed to deinitialize camera pointer object'
 
-        # send the function through the queue
+        # Send the function through the queue
         result, output, message = f(main=self)
 
-        # join the child process with the main process
-        try:
-            self._child.join(timeout=timeout)
-            self._child = None
+        # Break out of the main loop in the child process
+        self._child.started.value = 0
+        result = self._child.oq.get()
 
-        except mp.TimeoutError:
+        # Flush the IO queues
+        for q in [self._child.iq, self._child.oq]:
+            while q.qsize() != 0:
+                discard = q.get()
+            q.close()
+            q.join_thread()
+
+        # Attempt to join the child process
+        self._child.join(timeout)
+
+        # Raise an error if it hangs
+        if self._child.is_alive():
             self._child.terminate()
             self._child = None
-            raise CameraError('Child process is dead-locked')
+            raise CameraError('Child process dead-locked during cleanup')
+
+        else:
+            self._child = None
+
+        return
 
     # framerate
     @property

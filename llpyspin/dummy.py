@@ -73,9 +73,9 @@ class DummyAcquisitionProcess(mp.Process):
         self.buffersize = buffersize
         self.width, self.height = shape
         self.color = color
-        self.buffer = mp.Queue()
+        self.buffer = mp.JoinableQueue()
         self.started = mp.Value('i', 0)
-        self.paused = mp.Value('i', 0)
+        self.acquiring = mp.Value('i', 0)
 
         return
 
@@ -86,55 +86,52 @@ class DummyAcquisitionProcess(mp.Process):
         return
 
     def run(self):
+        """
+        """
+
         while self.started.value:
+            while self.acquiring.value:
 
-            #
-            t0 = time.time()
+                #
+                t0 = time.time()
 
-            # generate noise
-            if self.color:
-                size = (self.height, self.width, 3)
-            else:
-                size = (self.height, self.width)
-            image = np.random.randint(low=0, high=255, size=size, dtype=np.uint8)
+                # generate noise
+                if self.color:
+                    size = (self.height, self.width, 3)
+                else:
+                    size = (self.height, self.width)
+                image = np.random.randint(low=0, high=255, size=size, dtype=np.uint8)
 
-            # Wait for the appropriate inter-frame interval to lapse
-            while time.time() - t0 < (1 / self.framerate):
-                continue
+                # Wait for the appropriate inter-frame interval to lapse
+                while time.time() - t0 < (1 / self.framerate):
+                    continue
 
-            # Queue image
-            if self.buffer.qsize() < self.buffersize:
+                # Queue image
+                if self.buffer.qsize() == self.buffersize:
+                    discard = self.buffer.get()
+                    self.buffer.task_done()
                 self.buffer.put(image)
-
-            # Wait here if paused
-            while self.paused.value:
-                continue
 
         return
 
-    def pause(self):
-        """Pause acquisition"""
-        self.paused.value = 1
-
-    def unpause(self):
-        """Unpause acquisition"""
-        self.paused.value = 0
-
     def stop(self):
-        """Stop acquisition"""
+        """Stop acquisition and join the dummy acquisition process"""
 
-        # exit from the main acquisition loop
-        self.started.value = 0
+        #
+        if self.acquiring.value == 1:
+            self.acquiring.value = 0
 
-        # unpause if paused
-        if self.paused.value:
-            self.paused.value = 0
+        # Exit from the main acquisition loop
+        if self.started.value == 1:
+            self.started.value = 0
 
-        # flush the buffer
+        # Flush the image buffer
         while self.buffer.qsize() != 0:
             discard = self.buffer.get()
-        self.buffer.close()
-        self.buffer.join_thread()
+            self.buffer.task_done()
+
+        #
+        self.buffer.join()
 
         return
 
@@ -189,11 +186,48 @@ class DummyCameraPointer():
         return True
 
     def Init(self):
+        """
+        """
+
+        # Despawn the process
+        if self._p is not None:
+            self._p.stop()
+            self._p.join(timeout=3)
+            if self._p.is_alive():
+                self._p.terminate()
+            self._p = None
+
+        # Spawn a new process
+        kwargs = {
+            'buffersize': 10,
+            'framerate' : self.AcquisitionFrameRate.GetValue(),
+            'shape'     : (self.Height.GetValue(), self.Width.GetValue()),
+            'color'     : True if self.PixelFormat.GetValue() == PySpin.PixelFormat_RGB8 else False
+        }
+        self._p = DummyAcquisitionProcess(**kwargs)
+        self._p.start()
+
+        #
         self._initialized = True
+
         return
 
     def DeInit(self):
+        """
+        """
+
+        # Despawn the process
+        if self._p is not None:
+            self._p.stop()
+            self._p.join(timeout=3)
+            if self._p.is_alive():
+                print('Ooops')
+                self._p.terminate()
+            self._p = None
+
+        #
         self._initialized = False
+
         return
 
     def IsInitialized(self):
@@ -203,58 +237,57 @@ class DummyCameraPointer():
         return self._streaming
 
     def BeginAcquisition(self):
+        """
+        """
+
         if self._initialized is False:
             raise PySpin.SpinnakerException('Camera is not initialized')
-        else:
-            if self._p is not None:
-                try:
-                    self._p.stop()
-                    self._p.join(1)
-                    self._p = None
-                except mp.TimeoutError:
-                    self._p.terminate()
-                    self._p = None
-                    raise PySpin.SpinnakerException('Dummy acquisition process dead-locked') from None
-            framerate = self.AcquisitionFrameRate.GetValue()
-            shape = (self.Width.GetValue(), self.Height.GetValue())
-            buffersize = self.TLStream.StreamBufferCountManual.GetValue()
-            if self.PixelFormat.GetValue() == PySpin.PixelFormat_Mono8:
-                color = False
-            else:
-                color = True
-            self._p = DummyAcquisitionProcess(buffersize, framerate, shape, color)
-            self._p.start()
-            self._streaming = True
+
+        #
+        self._p.acquiring.value = 1
+
+        #
+        self._streaming = True
+
+        return
 
     def EndAcquisition(self):
+        """
+        """
+
         if self._initialized is False:
             raise PySpin.SpinnakerException('Camera is not initialized')
-        else:
-            if self._p is not None:
-                try:
-                    self._p.stop()
-                    self._p.join(1)
-                    self._p = None
-                except mp.TimeoutError:
-                    self._p.terminate()
-                    self._p = None
-                    raise PySpin.SpinnakerException('Dummy acquisition process dead-locked') from None
-            self._streaming = False
+
+        #
+        self._p.acquiring.value = 0
+
+        #
+        self._streaming = False
+
+        return
 
     def GetNextImage(self, timeout=100):
         """
-        Returns a PySpin.ImagePtr object created from a random numpy array
+        Keywords
+        --------
+        timeout
+            Timeout (in ms)
         """
 
         if self._streaming is False:
             raise PySpin.SpinnakerException('Camera is not streaming')
 
+        #
         try:
-            image = self._p.buffer.get(timeout=timeout / 1000000)
-            pointer = PySpin.Image_Create(self.Width.GetValue(), self.Height.GetValue(), 0, 0, self.PixelFormat.GetValue(), image)
-            return pointer
+            noise = self._p.buffer.get(timeout=timeout / 1000)
+            self._p.buffer.task_done()
+
         except queue.Empty:
-            raise PySpin.SpinnakerException('Image queury timed out') from None
+            raise PySpin.SpinnakerException('No buffered images available') from None
+
+        pointer = PySpin.Image_Create(self.Width.GetValue(), self.Height.GetValue(), 0, 0, self.PixelFormat.GetValue(), noise)
+
+        return pointer
 
     class TriggerMode(DummyProperty):
         def __init__(self, parent, min=None, max=None, val=PySpin.TriggerMode_Off):
@@ -263,12 +296,12 @@ class DummyCameraPointer():
         def SetValue(self, val):
             super().SetValue()
             if val == PySpin.TriggerMode_On:
-                if self.parent._streaming:
-                  self.parent._p.pause()
+                if self.parent._initialized:
+                    self.parent._p.acquiring.value = 0
                 self.val = val
             elif val ==  PySpin.TriggerMode_Off:
-                if self.parent._streaming:
-                    self.parent._p.unpause()
+                if self.parent._initialized:
+                    self.parent._p.acquiring.value = 1
                 self.val = val
             else:
                 raise PySpin.SpinnakerException(f'{val} is an invalid value')
@@ -472,7 +505,6 @@ class DummyCameraPointer():
                     PySpin.StreamBufferHandlingMode_NewestOnly,
                     PySpin.StreamBufferHandlingMode_OldestFirst,
                     PySpin.StreamBufferHandlingMode_NewestFirst,
-                    PySpin.StreamBufferHandlingMode_NewestFirstOverwrite,
                     PySpin.StreamBufferHandlingMode_OldestFirstOverwrite,
                 ]:
                     raise PySpin.SpinnakerException(f'{val} is not a valid value')

@@ -189,6 +189,7 @@ class MainProcess():
         self._binsize   = None
         self._format    = None
         self._roi       = None
+        self._stream_buffer_count = None
 
         # acquisition lock state
         self._locked = False
@@ -255,6 +256,7 @@ class MainProcess():
                     PySpin.PixelFormat_RGB8 if kwargs['color'] else PySpin.PixelFormat_Mono8,
                     PySpin.AcquisitionMode_Continuous,
                     PySpin.StreamBufferHandlingMode_NewestOnly,
+                    PySpin.StreamBufferCountMode_Manual,
                     PySpin.ExposureAuto_Off,
                     False,
                     3000,
@@ -269,6 +271,7 @@ class MainProcess():
                     pointer.PixelFormat,
                     pointer.AcquisitionMode,
                     pointer.TLStream.StreamBufferHandlingMode,
+                    pointer.TLStream.StreamBufferCountMode,
                     pointer.ExposureAuto,
                     pointer.AcquisitionFrameRateEnable,
                     pointer.ExposureTime,
@@ -283,6 +286,7 @@ class MainProcess():
                     'PixelFormat',
                     'AcquisitionMode',
                     'StreamBufferHandlingMode',
+                    'StreamBufferCountMode',
                     'ExposureAuto',
                     'AcqusitionFrameRateEnable',
                     'ExposureTime',
@@ -316,6 +320,7 @@ class MainProcess():
                     pointer.BinningHorizontal.GetValue(),
                     pointer.BinningVertical.GetValue()
                 )
+                stream_buffer_count = pointer.TLStream.StreamBufferCountManual.GetValue()
 
                 #
                 output = {
@@ -323,11 +328,13 @@ class MainProcess():
                     'exposure'  : exposure,
                     'binsize'   : binsize,
                     'roi'       : roi,
+                    'stream_buffer_count': stream_buffer_count
                 }
 
                 return True, output, None
 
-            except PySpin.SpinnakerException:
+            except PySpin.SpinnakerException as e:
+                print(e)
                 return False, None, 'Failed to initialize camera pointer object'
 
         # NOTE: It's very important to reference the "_color" attribute and not
@@ -340,6 +347,7 @@ class MainProcess():
         self._height    = output['roi'][3]
         self._width     = output['roi'][2]
         self._roi       = output['roi']
+        self._stream_buffer_count = output['stream_buffer_count']
 
         return
 
@@ -602,6 +610,52 @@ class MainProcess():
         result, output, message = f(main=self, value=value)
         if result:
             self._binsize = value
+
+        return
+
+    # Number of buffered images
+    @property
+    def stream_buffer_count(self):
+
+        if self.locked:
+            return self._stream_buffer_count
+
+        @queued
+        def f(child, pointer, **kwargs):
+            try:
+                buffer_count_mode = pointer.TLStream.StreamBufferCountMode.GetValue()
+                if buffer_count_mode != PySpin.StreamBufferCountMode_Manual:
+                    return False, None, 'Stream buffer mode is not set to manual count'
+                else:
+                    output = pointer.TLStream.StreamBufferCountManual.GetValue()
+                    return True, output, None
+            except PySpin.SpinnakerException:
+                return False, None, 'Failed to query the stream buffer count property'
+
+        result, output, message = f(main=self)
+
+        return output
+
+    @stream_buffer_count.setter
+    def stream_buffer_count(self, value):
+        if self.locked:
+            raise CameraError('Camera is locked during acquisition')
+
+        @queued
+        def f(child, pointer, **kwargs):
+            value = kwargs['value']
+            try:
+                max = pointer.TLStream.StreamBufferCountManual.GetMax()
+                if value > max:
+                    return False, None, f'Stream buffer count of {value} exceed maximum count of {max}'
+                else:
+                    pointer.TLStream.StreamBufferCountManual.SetValue(value)
+                    return True, None, None
+            except PySpin.SpinnakerException:
+                return False, None, f'Failed to set stream buffer count to {value}'
+
+        result, output, message = f(main=self, value=value)
+        self._stream_buffer_count = value
 
         return
 

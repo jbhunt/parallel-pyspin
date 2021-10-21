@@ -27,6 +27,11 @@ _PROPERTIES = {
         'minimum': 1,
         'maximum': 999999,
         'initial': 3000
+    },
+    'STREAM_BUFFER_COUNT': {
+        'minimum': 1,
+        'maximum': 100,
+        'initial': 10
     }
 }
 

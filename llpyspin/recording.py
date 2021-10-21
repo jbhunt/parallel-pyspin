@@ -216,11 +216,12 @@ class FFmpegVideoWriterChildProcess(VideoWriterChildProcess):
 
         while self.started.value:
             try:
-                image = self.q.get(timeout=False)
+                image = self.q.get(block=False)
                 p.stdin.write(image.tobytes())
             except queue.Empty:
                 continue
 
+        print('Writer is closing')
         p.stdin.close()
         p.wait()
 
@@ -379,3 +380,9 @@ class FFmpegVideoWriter(VideoWriter):
         }
         self.p = FFmpegVideoWriterChildProcess(**kwargs)
         self.p.start()
+
+    def close(self):
+        """
+        """
+
+        return

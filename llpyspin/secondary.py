@@ -92,8 +92,6 @@ class SecondaryCamera(MainProcess):
 
                 # set the streaming mode to oldest first
                 pointer.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
-                pointer.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
-                pointer.TLStream.StreamBufferCountManual.SetValue(pointer.TLStream.StreamBufferCountManual.GetMax())
 
                 # configure the hardware trigger for a secondary camera
                 pointer.TriggerMode.SetValue(PySpin.TriggerMode_Off)

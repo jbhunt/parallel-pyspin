@@ -81,8 +81,6 @@ class PrimaryCamera(MainProcess):
         def f(child, pointer, **kwargs):
             try:
                 pointer.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
-                pointer.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
-                pointer.TLStream.StreamBufferCountManual.SetValue(pointer.TLStream.StreamBufferCountManual.GetMax())
                 return True, None, None
             except PySpin.SpinnakerException:
                 return False, None, f'Failed to set the stream buffer handling mode property'
@@ -115,10 +113,11 @@ class PrimaryCamera(MainProcess):
         def f(child, pointer, **kwargs):
 
             #
-            if isinstance(pointer, DummyCameraPointer):
-                dummy = True
-            else:
-                dummy = False
+            if pointer.IsValid() is False:
+                return (False, None, 'Camera pointer object is not valid')
+
+            # Set the dummy flag
+            dummy = isinstance(pointer, DummyCameraPointer)
 
             # initialize the video writer (and send the result back to the main process)
             try:
@@ -232,8 +231,7 @@ class PrimaryCamera(MainProcess):
 
                 return True, timestamps, None
 
-            except PySpin.SpinnakerException as e:
-                print(e)
+            except PySpin.SpinnakerException:
                 return False, None, f'Video acquisition failed'
 
         # kwargs for configuring up the video writing

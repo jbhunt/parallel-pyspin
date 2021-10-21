@@ -204,7 +204,7 @@ class DummyCameraPointer():
 
         # Spawn a new process
         kwargs = {
-            'buffersize': 10,
+            'buffersize': self.TLStream.StreamBufferCountManual.GetValue(),
             'framerate' : self.AcquisitionFrameRate.GetValue(),
             'shape'     : (self.Height.GetValue(), self.Width.GetValue()),
             'color'     : True if self.PixelFormat.GetValue() == PySpin.PixelFormat_RGB8 else False
@@ -226,7 +226,6 @@ class DummyCameraPointer():
             self._p.stop()
             self._p.join(timeout=3)
             if self._p.is_alive():
-                print('Ooops')
                 self._p.terminate()
             self._p = None
 

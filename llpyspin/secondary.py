@@ -81,9 +81,9 @@ class SecondaryCamera(MainProcess):
                 item = (True, None)
                 child.oq.put(item)
 
-            except:
+            except VideoWritingError as error:
                 item = (
-                    False, f'Failed to open video writer (backend={backend})'
+                    False, f'Failed to open video writer (backend={backend}): {error}'
                 )
                 child.oq.put(item)
                 return (None, None, None)

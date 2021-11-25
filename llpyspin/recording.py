@@ -96,11 +96,21 @@ class VideoWriterChildProcess(mp.Process):
         super().start()
 
     def join(self, timeout=5):
-        self.started.value = 0
+        """
+        """
+
+        # Wait for the video writing to finish
         while self.q.qsize() != 0:
-            discard = self.q.get()
+            continue
+
+        # Exit from the main loop
+        self.started.value = 0
+
+        # Close the queue
         self.q.close()
         self.q.join_thread()
+
+        # Join with parent process
         super().join(timeout)
 
 class OpenCVVideoWriterChildProcess(VideoWriterChildProcess):
@@ -216,7 +226,7 @@ class FFmpegVideoWriterChildProcess(VideoWriterChildProcess):
 
         while self.started.value:
             try:
-                image = self.q.get(timeout=False)
+                image = self.q.get(block=False)
                 p.stdin.write(image.tobytes())
             except queue.Empty:
                 continue
@@ -249,13 +259,23 @@ class VideoWriter():
             self.filename = self.filename.absolute()
 
     def close(self, timeout=5):
+        """
+        Close the video writer
+        """
+
+        #
         if self.p is None:
             raise VideoWritingError('Video writer is already closed')
+
+        #
         else:
+
+            # The join method will handle all of the cleanup
             try:
-                # self.p.join_thread(timeout)
                 self.p.join(timeout)
                 self.p = None
+
+            # Kill the child process if it hangs
             except mp.TimeoutError:
                 self.p.terminate()
                 self.p.join()
@@ -265,6 +285,10 @@ class VideoWriter():
         return
 
     def write(self, pointer, dtype=np.uint8):
+        """
+        Write a single image to the video recording
+        """
+
         if self.p is None:
             raise VideoWritingError('Video writer is closed')
         else:
@@ -286,7 +310,7 @@ class OpenCVVideoWriter(VideoWriter):
         # Raise an error if OpenCV is not installed
         global OPENCV_IMPORT_RESULT
         if OPENCV_IMPORT_RESULT is False:
-            raise VideoWritingError('OpenCV import failed')
+            raise VideoWritingError('OpenCV (cv2) import failed')
 
         super().__init__(color)
 

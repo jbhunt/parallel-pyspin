@@ -71,14 +71,16 @@ class PrimaryCamera(MainProcess):
         if self._child.trigger.is_set():
             self._child.trigger.clear()
 
+        # Reset the frame counter
+        if self._child.shared_frame_counter.value != 0:
+            self._child.shared_frame_counter.value = 0
+
         # set the buffer handling mode to oldest first (instead of newest only)
         # and increase the number of bufered images allowed in memory
         @queued
         def f(child, pointer, **kwargs):
             try:
                 pointer.TLStream.StreamBufferHandlingMode.SetValue(PySpin.StreamBufferHandlingMode_OldestFirst)
-                pointer.TLStream.StreamBufferCountMode.SetValue(PySpin.StreamBufferCountMode_Manual)
-                pointer.TLStream.StreamBufferCountManual.SetValue(pointer.TLStream.StreamBufferCountManual.GetMax())
                 return True, None, None
             except PySpin.SpinnakerException:
                 return False, None, f'Failed to set the stream buffer handling mode property'
@@ -111,10 +113,11 @@ class PrimaryCamera(MainProcess):
         def f(child, pointer, **kwargs):
 
             #
-            if isinstance(pointer, DummyCameraPointer):
-                dummy = True
-            else:
-                dummy = False
+            if pointer.IsValid() is False:
+                return (False, None, 'Camera pointer object is not valid')
+
+            # Set the dummy flag
+            dummy = isinstance(pointer, DummyCameraPointer)
 
             # initialize the video writer (and send the result back to the main process)
             try:
@@ -136,9 +139,9 @@ class PrimaryCamera(MainProcess):
                 item = (True, None)
                 child.oq.put(item)
 
-            except:
+            except VideoWritingError as error:
                 item = (
-                    False, f'Failed to open video writer (backend={backend})'
+                    False, f'Failed to open video writer (backend={backend}): {error}'
                 )
                 child.oq.put(item)
                 return (None, None, None)
@@ -159,54 +162,57 @@ class PrimaryCamera(MainProcess):
                 while child.acquiring.value:
 
                     try:
-                        image = pointer.GetNextImage(kwargs['timeout'])
-                        if image.IsIncomplete():
+
+                        # Grab the next frame from the buffer
+                        frame = pointer.GetNextImage(kwargs['timeout'])
+
+                        # Increment the shared frame counter
+                        child.shared_frame_counter.value += 1
+
+                        # Write the frame to the video container
+                        if frame.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(image)
+                            writer.write(frame)
                         else:
                             if len(timestamps) == 0:
-                                t0 = image.GetTimeStamp()
+                                t0 = frame.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (image.GetTimeStamp() - t0) / 1000000
+                                tn = (frame.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(image)
+                            writer.write(frame)
+                            frame.Release()
 
                     except PySpin.SpinnakerException:
                         continue
 
-                    # This will raise an error if using the dummy camera pointer
-                    try:
-                        image.Release()
-                    except PySpin.SpinnakerException:
-                        continue
-
-                # suspend image acquisition to empty out the device buffer
+                # Suspend image acquisition to empty out the device buffer
                 pointer.TriggerMode.SetValue(PySpin.TriggerMode_On)
 
-                # empty out the host computer's device buffer
+                # Empty out the host computer's device buffer
                 while True:
                     try:
-                        image = pointer.GetNextImage(kwargs['timeout'])
-                        if image.IsIncomplete():
+
+                        # Grab the next frame from the buffer
+                        frame = pointer.GetNextImage(kwargs['timeout'])
+
+                        # Increment the shared frame counter
+                        child.shared_frame_counter.value += 1
+
+                        if frame.IsIncomplete():
                             continue
                         elif dummy:
-                            writer.write(image)
+                            writer.write(frame)
                         else:
                             if len(timestamps) == 0:
-                                t0 = image.GetTimeStamp()
+                                t0 = frame.GetTimeStamp()
                                 timestamps.append(0.0)
                             else:
-                                tn = (image.GetTimeStamp() - t0) / 1000000
+                                tn = (frame.GetTimeStamp() - t0) / 1000000
                                 timestamps.append(tn)
-                            writer.write(image)
-
-                        # This will raise an error if using the dummy camera pointer
-                        try:
-                            image.Release()
-                        except PySpin.SpinnakerException:
-                            continue
+                            writer.write(frame)
+                            frame.Release()
 
                     except PySpin.SpinnakerException:
                         break

@@ -11,7 +11,7 @@ from .processes  import MainProcess, ChildProcess, CameraError, queued, GETBY_DE
 
 def _acquire(child, pointer, **kwargs):
     """
-    Main aquisition loop
+    Main function for acquiring new frames
     """
 
     #
@@ -24,10 +24,10 @@ def _acquire(child, pointer, **kwargs):
         while child.acquiring.value:
 
             try:
-                image = pointer.GetNextImage(kwargs['timeout'])
+                frame = pointer.GetNextImage(kwargs['timeout'])
 
                 #
-                if not image.IsIncomplete():
+                if not frame.IsIncomplete():
 
                     # store the image (critical - use lock)
                     with child.qlock:
@@ -37,7 +37,7 @@ def _acquire(child, pointer, **kwargs):
                             previous = child.buffer.get()
 
                         # replace with the current image
-                        child.buffer.put(image.GetNDArray().astype(np.uint8))
+                        child.buffer.put(frame.GetNDArray().astype(np.uint8))
 
             except PySpin.SpinnakerException:
                 continue
